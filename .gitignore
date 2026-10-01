@@ -1,0 +1,28 @@
+# JavaScript
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data and editor files
+.DS_Store
+*.log
+.idea/
+.vscode/
+data/
