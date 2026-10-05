@@ -1,0 +1,6 @@
+name: Amazon Agent — Local
+values:
+  - key: baseUrl
+    value: 'http://127.0.0.1:3001'
+  - key: token
+    value: ''

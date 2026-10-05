@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{baseUrl}}/auth/me"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: pm.test('HTTP 401（预期结果）', () => pm.response.to.have.status(401));
+    language: text/javascript
+order: 3000

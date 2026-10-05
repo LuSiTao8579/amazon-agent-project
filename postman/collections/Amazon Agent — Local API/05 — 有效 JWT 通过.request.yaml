@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{baseUrl}}/auth/me"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{token}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('身份为本地测试用户', () => pm.expect(pm.response.json().subject).to.eql('local-dev-user'));
+    language: text/javascript
+order: 5000

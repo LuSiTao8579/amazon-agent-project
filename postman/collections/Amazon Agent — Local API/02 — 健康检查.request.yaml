@@ -1,0 +1,12 @@
+$kind: http-request
+url: "{{baseUrl}}/health"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('后端进程正常', () => pm.expect(pm.response.json()).to.deep.eql({ status: 'ok', service: 'bknd' }));
+    language: text/javascript
+order: 2000

@@ -1,0 +1,2 @@
+$kind: collection
+description: 本地 NestJS 环境验证。先启动 bknd；JWT 测试需要在环境变量 token 中填写本地生成的短期 Token。

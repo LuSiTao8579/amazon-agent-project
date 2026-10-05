@@ -1,0 +1,12 @@
+$kind: http-request
+url: "{{baseUrl}}/"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('返回 Hello World!', () => pm.expect(pm.response.text()).to.eql('Hello World!'));
+    language: text/javascript
+order: 1000

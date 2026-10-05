@@ -1,0 +1,55 @@
+{
+  "info": {
+    "name": "Amazon Agent — Local API",
+    "description": "本地 NestJS 环境验证。先启动 bknd；JWT 测试需要在环境变量 token 中填写本地生成的短期 Token。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 — 后端首页",
+      "request": { "method": "GET", "url": "{{baseUrl}}/", "auth": { "type": "noauth" } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('返回 Hello World!', () => pm.expect(pm.response.text()).to.eql('Hello World!'));"
+      ] } }]
+    },
+    {
+      "name": "02 — 健康检查",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health", "auth": { "type": "noauth" } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('后端进程正常', () => pm.expect(pm.response.json()).to.deep.eql({ status: 'ok', service: 'bknd' }));"
+      ] } }]
+    },
+    {
+      "name": "03 — 未携带 JWT 被拒绝",
+      "request": { "method": "GET", "url": "{{baseUrl}}/auth/me", "auth": { "type": "noauth" } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('HTTP 401（预期结果）', () => pm.response.to.have.status(401));"
+      ] } }]
+    },
+    {
+      "name": "04 — 错误 JWT 被拒绝",
+      "request": { "method": "GET", "url": "{{baseUrl}}/auth/me", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "invalid-token", "type": "string" }] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('HTTP 401（预期结果）', () => pm.response.to.have.status(401));"
+      ] } }]
+    },
+    {
+      "name": "05 — 有效 JWT 通过",
+      "request": { "method": "GET", "url": "{{baseUrl}}/auth/me", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('身份为本地测试用户', () => pm.expect(pm.response.json().subject).to.eql('local-dev-user'));"
+      ] } }]
+    },
+    {
+      "name": "06 — Swagger 文档",
+      "request": { "method": "GET", "url": "{{baseUrl}}/docs-json", "auth": { "type": "noauth" } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('文档包含健康检查和 JWT 接口', () => { const paths = pm.response.json().paths; pm.expect(paths).to.have.property('/health'); pm.expect(paths).to.have.property('/auth/me'); });"
+      ] } }]
+    }
+  ]
+}
