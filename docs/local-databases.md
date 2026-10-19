@@ -46,7 +46,8 @@ docker compose logs --tail=50 postgres redis
 stop 暂停服务但保留数据。不要随意执行 `docker compose down -v`，它会删除本项目数据卷。
 数据库初始化之后，仅改 .env 不会更改数据库已有密码。
 init.sql 仅在空数据卷首次初始化时执行，不是每次启动都会执行。
+因此业务表（如 users）不写进 init.sql，而是在 bknd 目录执行 `npm run db:migrate` 创建，见 `docs/auth-step-2.md`。
 
 ## 后续工作
 
-本步骤仅配置数据库服务；Next.js、NestJS 及应用数据库连接仍需后续配置。
+NestJS 已通过 bknd/.env 的 DATABASE_URL 连接 PostgreSQL；Redis 尚未接入应用。

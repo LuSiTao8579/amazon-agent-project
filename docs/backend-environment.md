@@ -48,4 +48,5 @@ npm run test:e2e
 本项目使用 Node 24 LTS。当前 NestJS 脚手架采用 ESM、Oxlint 和 Vitest，与旧教程的 CommonJS/ESLint/Jest 可能不同。
 根目录 .env 放数据库密码；agent/.env 放模型配置；bknd/.env 放后端配置。
 前端端口 3000，后端端口 3001。后端仅监听本机。
-尚未接入数据库或 Python Agent；下一阶段可以进行业务联调。
+已接入 PostgreSQL（bknd/.env 的 DATABASE_URL，启动前需 `docker compose up -d --wait` 和 `npm run db:migrate`），详见 docs/auth-step-2.md。
+npm run test:e2e 需要数据库在运行。尚未接入 Python Agent。

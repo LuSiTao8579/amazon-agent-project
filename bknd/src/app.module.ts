@@ -5,6 +5,8 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { EnvironmentController } from './environment.controller.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
+import { DatabaseModule } from './database/database.module.js';
+import { UsersModule } from './users/users.module.js';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
         };
       },
     }),
+    DatabaseModule,
+    UsersModule,
   ],
   controllers: [AppController, EnvironmentController],
   providers: [AppService, JwtAuthGuard],
