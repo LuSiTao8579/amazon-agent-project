@@ -3,10 +3,10 @@ import Providers from './providers';
 
 export const metadata: Metadata = {
   title: {
-    default: '供应链工作台 · 页面框架',
+    default: '供应链工作台',
     template: '%s | 供应链工作台',
   },
-  description: '供应链工作台的注册、登录与业务页面原型，尚未接入认证 API。',
+  description: '供应链工作台：注册、登录与供应链业务入口。',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

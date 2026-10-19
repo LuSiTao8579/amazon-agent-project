@@ -4,9 +4,11 @@ import NextLink from 'next/link';
 import {
   Alert, Box, Button, Chip, Container, Paper, Stack, Typography,
 } from '@mui/material';
-import { routes, workspaceSections, type WorkspaceSection } from '@/config/routes';
+import { workspaceSections, type WorkspaceSection } from '@/config/routes';
+import type { PublicUser } from '@/lib/auth-contract';
+import LogoutButton from './logout-button';
 
-export default function WorkspacePreview({ section }: { section: WorkspaceSection }) {
+export default function WorkspacePreview({ section, user }: { section: WorkspaceSection; user: PublicUser }) {
   const current = workspaceSections[section];
 
   return (
@@ -22,16 +24,16 @@ export default function WorkspacePreview({ section }: { section: WorkspaceSectio
           <Typography variant="overline" color="primary">SUPPLY CHAIN WORKSPACE</Typography>
           <Typography variant="h5" component="p" sx={{ fontWeight: 700 }}>供应链工作台</Typography>
         </Box>
-        <Button component={NextLink} href={routes.login} variant="outlined">返回登录页</Button>
+        <LogoutButton />
       </Stack>
 
-      <Alert severity="warning" sx={{ mb: 3 }}>
-        页面框架预览：当前没有登录状态或访问保护，也不展示真实业务数据。
+      <Alert severity="success" sx={{ mb: 3, overflowWrap: 'anywhere' }}>
+        已登录：{user.email}
       </Alert>
 
       <Box
         component="nav"
-        aria-label="页面框架预览导航"
+        aria-label="工作台导航"
         sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 3 }}
       >
         {Object.values(workspaceSections).map((item) => (
@@ -55,7 +57,7 @@ export default function WorkspacePreview({ section }: { section: WorkspaceSectio
         <Typography variant="h6" component="h2" sx={{ mb: 2 }}>{current.subtitle}</Typography>
         <Typography color="text.secondary" sx={{ maxWidth: 640 }}>{current.description}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 4 }}>
-          当前仅用于核对页面入口；正式共享导航、鉴权和业务内容将在后续步骤完成。
+          注册登录已接入真实账号；当前业务页面仍为框架，图表、公司与订单功能将在后续步骤完成。
         </Typography>
       </Paper>
     </Container>

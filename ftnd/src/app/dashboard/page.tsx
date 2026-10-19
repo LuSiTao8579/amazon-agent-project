@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import WorkspacePreview from '@/components/workspace-preview';
+import AuthenticatedWorkspace from '@/components/authenticated-workspace';
 
 export const metadata: Metadata = {
   title: 'Dashboard · 页面框架',
 };
 
 export default function Page() {
-  return <WorkspacePreview section="dashboard" />;
+  return <AuthenticatedWorkspace section="dashboard" />;
 }

@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import AuthPreview from '@/components/auth-preview';
+import AuthForm from '@/components/auth-form';
 
 export const metadata: Metadata = {
-  title: '登录 · 页面框架',
+  title: '登录',
 };
 
 export default function Page() {
-  return <AuthPreview mode="login" />;
+  return <AuthForm mode="login" />;
 }
