@@ -1,12 +1,12 @@
 {
   "info": {
     "name": "Amazon Agent — Auth API",
-    "description": "第三步真实注册登录。按注册、登录、当前用户依次调试；登录后手动将 accessToken 填到本地环境 token。首次注册201，重复邮箱409。示例凭证仅供本地开发。",
+    "description": "第六步完整认证 API 验收集合。按 01 → 08 顺序执行：覆盖非法输入（400）、首次注册（201）、重复邮箱（409）、不存在邮箱与错误密码（401）、正确登录（200，自动将 accessToken 写入当前运行环境 token）、有效凭证查当前用户（200）及无效凭证拦截（401）。所有示例凭证均为本地公开测试值。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "01 — 注册",
+      "name": "01 — 注册：非法输入被拦截（400）",
       "request": {
         "method": "POST",
         "url": "{{baseUrl}}/auth/signup",
@@ -21,7 +21,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"step3-learner@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "raw": "{\n  \"email\": \"invalid-email-format\",\n  \"password\": \"short\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -35,15 +35,89 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('首次注册 201；重复邮箱 409', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
-              "if (pm.response.code === 201) { pm.test('注册不自动登录且不泄露密码', () => { const data = pm.response.json(); pm.expect(data).not.to.have.property('accessToken'); pm.expect(data.user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); }); }"
+              "pm.test('HTTP 400 输入不合法', () => pm.response.to.have.status(400));",
+              "pm.test('返回校验错误数组且不泄露敏感字段', () => { const data = pm.response.json(); pm.expect(data.message).to.be.an('array').that.is.not.empty; pm.expect(JSON.stringify(data)).not.to.include('passwordHash'); });"
             ]
           }
         }
       ]
     },
     {
-      "name": "02 — 登录",
+      "name": "02 — 注册：合法新邮箱（首次 201 / 重复 409）",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/signup",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"step6-learner@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('首次注册 201；已注册过则 409', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+              "if (pm.response.code === 201) { pm.test('注册成功不自动签发 Token，且不返回密码或哈希', () => { const data = pm.response.json(); pm.expect(data.message).to.eql('注册成功，请登录'); pm.expect(data).not.to.have.property('accessToken'); pm.expect(data.user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); pm.expect(data.user).not.to.have.property('password'); pm.expect(data.user).not.to.have.property('passwordHash'); }); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 — 注册：重复邮箱被拒绝（409）",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/signup",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"STEP6-LEARNER@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409 重复邮箱冲突', () => pm.response.to.have.status(409));",
+              "pm.test('返回明确重复提示', () => pm.expect(pm.response.json().message).to.eql('该邮箱已注册'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 — 登录：不存在的邮箱被拒绝（401）",
       "request": {
         "method": "POST",
         "url": "{{baseUrl}}/auth/login",
@@ -58,7 +132,81 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"step3-learner@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "raw": "{\n  \"email\": \"nonexistent-user@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401 认证失败', () => pm.response.to.have.status(401));",
+              "pm.test('对外统一提示邮箱或密码错误', () => pm.expect(pm.response.json().message).to.eql('邮箱或密码错误'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 — 登录：错误密码被拒绝（401）",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"step6-learner@example.test\",\n  \"password\": \"Wrong password!2026\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401 认证失败', () => pm.response.to.have.status(401));",
+              "pm.test('与不存在邮箱返回完全一致的提示', () => pm.expect(pm.response.json().message).to.eql('邮箱或密码错误'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 — 登录：正确密码签发 JWT（200）",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"step6-learner@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -73,14 +221,14 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
-              "pm.test('返回短期 JWT 和公开用户字段', () => { const data = pm.response.json(); pm.expect(data.accessToken).to.be.a('string').and.not.empty; pm.expect(data.expiresIn).to.eql(900); pm.expect(data.user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); });"
+              "pm.test('返回短期 JWT 和公开用户字段，且自动写入运行时 token 变量', () => { const data = pm.response.json(); pm.expect(data.accessToken).to.be.a('string').and.not.empty; pm.expect(data.tokenType).to.eql('Bearer'); pm.expect(data.expiresIn).to.eql(900); pm.expect(data.user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); pm.expect(data.user).not.to.have.property('password'); pm.expect(data.user).not.to.have.property('passwordHash'); pm.environment.set('token', data.accessToken); });"
             ]
           }
         }
       ]
     },
     {
-      "name": "03 — 当前用户",
+      "name": "07 — 当前用户：有效 JWT 返回真实用户（200）",
       "request": {
         "method": "GET",
         "url": "{{baseUrl}}/auth/me",
@@ -102,7 +250,35 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
-              "pm.test('返回真实用户且不泄露密码', () => pm.expect(pm.response.json()).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'));"
+              "pm.test('返回真实用户且不泄露密码或哈希', () => { const user = pm.response.json(); pm.expect(user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); pm.expect(user.email).to.eql('step6-learner@example.test'); pm.expect(user).not.to.have.property('password'); pm.expect(user).not.to.have.property('passwordHash'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 — 当前用户：无效或过期 JWT 被拒绝（401）",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/auth/me",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "invalid-or-expired-token",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401 拒绝无效凭证', () => pm.response.to.have.status(401));"
             ]
           }
         }

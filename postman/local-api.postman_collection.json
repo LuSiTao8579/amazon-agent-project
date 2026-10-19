@@ -48,7 +48,7 @@
       "request": { "method": "GET", "url": "{{baseUrl}}/docs-json", "auth": { "type": "noauth" } },
       "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
         "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
-        "pm.test('文档包含健康检查和 JWT 接口', () => { const paths = pm.response.json().paths; pm.expect(paths).to.have.property('/health'); pm.expect(paths).to.have.property('/auth/me'); });"
+        "pm.test('文档包含健康检查与完整认证接口且不暴露密码哈希', () => { const doc = pm.response.json(); pm.expect(doc.paths).to.include.all.keys('/health', '/auth/signup', '/auth/login', '/auth/me'); pm.expect(doc.components.schemas.PublicUserDto.properties).not.to.have.property('passwordHash'); });"
       ] } }]
     }
   ]

@@ -17,9 +17,9 @@ export function setupApp(app: INestApplication) {
   const options = new DocumentBuilder()
     .setTitle('供应链工作台 API')
     .setDescription(
-      '邮箱注册、密码登录与真实用户查询；使用 Bearer JWT，有效期 15 分钟。',
+      '邮箱注册（POST /auth/signup）、密码登录（POST /auth/login）与当前用户查询（GET /auth/me）。后端签发有效期 15 分钟的 Bearer JWT；Next.js 前端通过服务端 HttpOnly Cookie 转发该凭证。所有接口均不返回明文密码或密码哈希。',
     )
-    .setVersion('0.3.0')
+    .setVersion('0.6.0')
     .addBearerAuth()
     .build();
   SwaggerModule.setup('docs', app, () =>

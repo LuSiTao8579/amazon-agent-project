@@ -42,6 +42,9 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       assert.equal(result.status, 400);
     });
     await t.test('backend validation still rejects invalid input and extra fields', async () => {
+      const emptyResult = await post('/api/auth/signup', { email: '', password: '' });
+      assert.equal(emptyResult.status, 400);
+      assert.match((await emptyResult.json()).message, /邮箱/);
       const result = await post('/api/auth/signup', { email: 'bad', password: 'short' });
       assert.equal(result.status, 400);
       assert.match((await result.json()).message, /邮箱/);
@@ -55,7 +58,7 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       }
       assert.equal((await fetch(base + '/api/auth/me')).status, 401);
     });
-    await t.test('registration returns actual success and public user, not a token', async () => {
+    await t.test('registration returns actual success and public user, not a token, and stores Argon2id in PostgreSQL', async () => {
       const result = await post('/api/auth/signup', { email: ' ' + email.toUpperCase() + ' ', password });
       assert.equal(result.status, 201);
       assert.equal(result.headers.get('cache-control'), 'no-store');
@@ -63,8 +66,15 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       assert.equal(body.message, '注册成功，请登录');
       assert.equal(body.user.email, email);
       assert.equal('accessToken' in body, false);
+      assert.equal('password' in body.user, false);
       assert.equal('passwordHash' in body.user, false);
+      assert.equal(JSON.stringify(body).includes(password), false);
       id = body.user.id;
+      const { rows } = await db.query('SELECT email, password_hash FROM users WHERE id = $1', [id]);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].email, email);
+      assert.match(rows[0].password_hash, /^\$argon2id\$/);
+      assert.equal(rows[0].password_hash.includes(password), false);
     });
     await t.test('duplicate registration is 409', async () => {
       const result = await post('/api/auth/signup', { email, password });

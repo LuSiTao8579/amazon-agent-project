@@ -1,40 +1,31 @@
-# Postman 接口调试
+# Postman 接口调试与第六步 API 验收
 
-## 集合
+## 集合与环境文件
 
-- postman/local-api.postman_collection.json：原有 6 个环境验证请求，05 已改为读取真实用户。
-- postman/auth-api.postman_collection.json：新增注册、登录、当前用户三个请求。
-- postman/local.postman_environment.json：本地 baseUrl 和空 token 占位符。
-- 原生目录 postman/collections 中旧 05 请求的响应断言也已同步。
+- `postman/auth-api.postman_collection.json`：完整认证 API 验收集合（共 8 个请求，覆盖正反向场景与自动断言）。
+- `postman/local-api.postman_collection.json`：基础环境验证集合（6 个请求，其中 `05` 验证真实用户，`06` 验证 Swagger OpenAPI 文档包含完整认证接口且不暴露密码哈希）。
+- `postman/local.postman_environment.json`：本地环境变量（`baseUrl = http://127.0.0.1:3001`，`token` 默认为空占位符）。
+- `postman/collections/Amazon Agent — Local API/`：Postman 原生目录请求与断言（已与 JSON 集合保持同步）。
 
-## 使用顺序
+## 认证集合 8 个请求及预期结果
 
-1. 确保 Docker 中 PostgreSQL 正常，第二步迁移已完成。
-2. 在 bknd 运行 npm run start:dev。
-3. 在 Postman 导入上述 JSON，选中 Amazon Agent — Local 环境。
-4. 打开认证集合“01 — 注册”，填写演示邮箱、密码并发送；首次返回 201，再次使用相同邮箱返回 409。
-5. 打开“02 — 登录”，用同一邮箱密码发送，返回 200 与 accessToken。
-6. 将 accessToken 复制到本地环境的 token 值，再发送“03 — 当前用户”，应得到真实用户信息。
-7. 原环境集合 05 请求也使用这个 Token。03、04 返回 401 是预期通过。
+导入 `postman/auth-api.postman_collection.json` 与 `postman/local.postman_environment.json`，右上角选择 **Amazon Agent — Local** 环境，按顺序运行：
 
-注册密码规则为 15–128 字符，允许符号/空格但不能全为空白。
-演示集合中的邮箱、密码是公开测试值，可换成自己的本地测试账号。
-手动注册的账号会保留在本地数据库。
+| 序号与名称 | 方法与路径 | 验证目标 | 预期状态码与断言 |
+| --- | --- | --- | --- |
+| `01 — 注册：非法输入被拦截（400）` | `POST /auth/signup` | 错误邮箱格式、过短密码被后端拦截 | `400`，`message` 为错误数组，不含敏感字段 |
+| `02 — 注册：合法新邮箱（首次 201 / 重复 409）` | `POST /auth/signup` | 合法新邮箱写入 PostgreSQL | 首次 `201`（返回 `message` 与公开 `user`，不含 `accessToken`/`password`/`passwordHash`）；重复运行则 `409` |
+| `03 — 注册：重复邮箱被拒绝（409）` | `POST /auth/signup` | 大写/重复邮箱触发唯一约束冲突 | `409`，`message` 为 `"该邮箱已注册"` |
+| `04 — 登录：不存在的邮箱被拒绝（401）` | `POST /auth/login` | 未注册邮箱不能登录，且不泄露邮箱是否存在 | `401`，`message` 为 `"邮箱或密码错误"` |
+| `05 — 登录：错误密码被拒绝（401）` | `POST /auth/login` | 错误密码不能登录，提示与不存在邮箱一致 | `401`，`message` 为 `"邮箱或密码错误"` |
+| `06 — 登录：正确密码签发 JWT（200）` | `POST /auth/login` | 正确密码登录并返回短期 Bearer JWT | `200`，含 `accessToken`、`expiresIn: 900`、公开 `user`；脚本自动执行 `pm.environment.set('token', data.accessToken)` |
+| `07 — 当前用户：有效 JWT 返回真实用户（200）` | `GET /auth/me` | 携带 `{{token}}` 查询数据库真实用户 | `200`，返回 `id`、`email`、`createdAt`、`updatedAt`，不含密码或哈希 |
+| `08 — 当前用户：无效或过期 JWT 被拒绝（401）` | `GET /auth/me` | 伪造或失效凭证被 `JwtAuthGuard` 拦截 | `401` |
 
-## 注意事项
+> 说明：`06 — 登录` 的 Post-response 脚本会在 Postman 内存环境中自动写入 `token`，因此直接发送 `07 — 当前用户` 或使用 Collection Runner 一键按序运行即可全部通过，无需把真实 Token 写进 Git 跟踪的仓库文件。
 
-scripts/dev-token.mjs 已停用，不能再用旧 local-dev-user Token 代替登录。
-Token 15 分钟过期后重新登录；JWT_SECRET 不能粘贴到 Postman。
-真实 Token 和密码不要保存到 Git 跟踪的 JSON/YAML，也不要导出到仓库。
-如果已导入过旧 JSON，需要更新或重新导入，以使用新的 05 响应断言。
+## 安全与提交注意事项
 
-## 常见问题
-
-- ECONNREFUSED：确认后端启动并监听 3001，数据库运行。
-- 400：查看响应 message，检查格式、密码长度和是否传入多余字段。
-- 401：检查邮箱密码，或是否使用登录返回的、尚未过期的 Token。
-- 409：邮箱已注册，直接登录或换一个测试邮箱。
-- 地址仍是 {{baseUrl}}：选择本地环境。
-- 旧断言仍在检查 subject/local-dev-user：更新集合；当前 /auth/me 返回 id、email、createdAt、updatedAt。
-
-测试脚本位于请求的 Scripts → Post-response。自动测试与完整接口契约见 [第三步说明](auth-step-3.md)。
+- `bknd/scripts/dev-token.mjs` 已停用，所有受保护接口测试必须使用真实注册并登录获得的 JWT。
+- 不要将真实密码、`JWT_SECRET` 或运行后生成的有效 `token` 导出并提交到 Git 跟踪的 JSON/YAML 文件中。
+- 完整端到端验收清单见 [第六步说明](auth-step-6.md)。
