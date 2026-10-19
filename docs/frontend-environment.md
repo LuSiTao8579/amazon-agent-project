@@ -9,8 +9,8 @@ npm run dev
 ```
 
 使用 Node.js 24 LTS。打开 http://127.0.0.1:3000，默认进入 /login。
-注册、登录现已接入真实 NestJS API，需同时启动 3001 端口的后端与 PostgreSQL。
-操作及验收见 [第四步说明](auth-step-4.md)。请统一使用 127.0.0.1:3000，不要混用 localhost。
+注册、登录与共享工作台导航现已接入真实 NestJS API，需同时启动 3001 端口的后端与 PostgreSQL。
+操作及验收见 [第四步说明](auth-step-4.md) 与 [第五步说明](auth-step-5.md)。请统一使用 127.0.0.1:3000，不要混用 localhost。
 终端按 Control+C 停止。修改页面保存后浏览器自动更新。
 Mac 已通过 Homebrew 安装并链接 Node.js 24；原 npm 保存在 /opt/homebrew/lib/node_modules/npm-backup-20261005。
 其他电脑可通过自己的版本管理工具安装 Node 24，再运行 npm ci。

@@ -78,14 +78,14 @@ Next 的接口只适配浏览器与 Cookie，不重写用户业务。真正的�
 4. ftnd/src/app/api/auth/ 下的 route.ts：浏览器访问的四条路由。
 5. ftnd/src/lib/auth-server.ts：转发到 Nest、Cookie、可信来源与服务器故障处理。
 6. ftnd/src/components/registration-feedback.tsx：注册成功跨页面提示，只有非敏感邮箱和消息。
-7. ftnd/src/components/authenticated-workspace.tsx、logout-button.tsx：读取真实用户、页面保护和退出。
-8. ftnd/src/app/login/page.tsx、signup/page.tsx 与四个业务 page.tsx：将组件接到路由。
+7. ftnd/src/app/(workspace)/layout.tsx、workspace-shell.tsx、logout-button.tsx：共享工作台布局、读取真实用户、页面保护和退出（第五步已升级，见 [第五步说明](auth-step-5.md)）。
+8. ftnd/src/app/login/page.tsx、signup/page.tsx 与 (workspace) 下四个业务 page.tsx：将组件接到路由。
 9. ftnd/src/app/providers.tsx、layout.tsx、error.tsx：共享提示、页面元数据、服务不可用兜底。
 10. ftnd/tests/auth.test.mjs、auth.integration.mjs：校验边界与真实 API 流程测试。
 11. ftnd/.env.example、package.json、package-lock.json：配置说明、脚本及精确依赖。
-12. docs/frontend-environment.md、auth-step-3.md：已同步第四步当前状态。
+12. docs/frontend-environment.md、auth-step-3.md、auth-step-5.md：已同步当前状态。
 
-原 auth-preview.tsx 已删除，以 auth-form.tsx 替代，不再保留禁用表单。
+原 auth-preview.tsx、workspace-preview.tsx 已移除，分别由 auth-form.tsx 及共享工作台布局替代。
 
 ## 自己验收
 

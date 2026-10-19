@@ -9,7 +9,7 @@ import {
   Alert, Box, Button, CircularProgress, Container, IconButton, InputAdornment,
   Link, Paper, Stack, TextField, Typography,
 } from '@mui/material';
-import { routes } from '@/config/routes';
+import { routes, workspaceNavItems } from '@/config/routes';
 import { errorMessage, isRecord, isPublicUser, type AuthMode, type FieldErrors } from '@/lib/auth-contract';
 import { normalizeEmail, validateCredentials } from '@/lib/auth-validation';
 import { useRegistrationFeedback } from './registration-feedback';
@@ -117,10 +117,11 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
               {isSignup ? '使用邮箱创建账号，开始你的供应链管理之旅。' : '登录账号，继续访问你的供应链工作台。'}
             </Typography>
             <Stack spacing={2}>
-              <Typography>Dashboard · 数据总览</Typography>
-              <Typography>Company · 供应链公司</Typography>
-              <Typography>Order · 订单追踪</Typography>
-              <Typography>User · 用户与账户</Typography>
+              {workspaceNavItems.map((item) => (
+                <Typography key={item.href}>
+                  {item.title} · {item.subtitle}
+                </Typography>
+              ))}
             </Stack>
           </Box>
           <Box component="form" noValidate onSubmit={submit} aria-busy={pending} sx={{ p: { xs: 3, md: 4 } }}>

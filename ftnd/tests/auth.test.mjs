@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeEmail, validateCredentials } from '../src/lib/auth-validation.ts';
 import { errorMessage, isPublicUser, publicUser } from '../src/lib/auth-contract.ts';
+import {
+  isActiveWorkspacePath,
+  routes,
+  workspaceNavItems,
+  workspaceSections,
+} from '../src/config/routes.ts';
 
 const valid = { email: 'learner@example.test', password: 'Long password! 123' };
 const cases = [
@@ -51,4 +57,27 @@ test('only public user fields survive serialization', () => {
   assert.equal(isPublicUser(user), true);
   assert.equal(isPublicUser({ email: 'missing-fields' }), false);
   assert.equal('passwordHash' in publicUser(user), false);
+});
+test('workspace navigation is derived from a single source of truth', () => {
+  assert.deepEqual(
+    workspaceNavItems.map((item) => [item.key, item.title, item.href]),
+    [
+      ['dashboard', 'Dashboard', routes.dashboard],
+      ['company', 'Company', routes.company],
+      ['order', 'Order', routes.order],
+      ['user', 'User', routes.user],
+    ],
+  );
+  for (const item of workspaceNavItems) {
+    assert.equal(workspaceSections[item.key], item);
+    assert.ok(item.subtitle.length > 0);
+    assert.ok(item.description.length > 0);
+    assert.ok(item.placeholders.length >= 3);
+  }
+});
+test('active workspace path matcher handles exact and nested routes without prefix collisions', () => {
+  assert.equal(isActiveWorkspacePath('/dashboard', '/dashboard'), true);
+  assert.equal(isActiveWorkspacePath('/order/123', '/order'), true);
+  assert.equal(isActiveWorkspacePath('/orders', '/order'), false);
+  assert.equal(isActiveWorkspacePath('/company', '/dashboard'), false);
 });

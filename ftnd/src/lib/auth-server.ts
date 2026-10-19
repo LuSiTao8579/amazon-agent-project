@@ -1,7 +1,10 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { NextResponse } from 'next/server';
+import { routes } from '@/config/routes';
 import { errorMessage, isRecord, isPublicUser, publicUser } from './auth-contract';
 
 export const SESSION_COOKIE = 'supply_chain_session';
@@ -87,7 +90,10 @@ export async function submitCredentials(request: Request, mode: 'signup' | 'logi
   }
 }
 
-export async function currentUser() {
+// Deduplicate /auth/me within a single server render pass so shared layout + page
+// only hit NestJS once on initial load/refresh, while client-side page transitions
+// still verify the cookie on the server for each target page.
+export const currentUser = cache(async () => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const response = await backendFetch('/auth/me', {
@@ -98,4 +104,10 @@ export async function currentUser() {
   const user: unknown = await response.json();
   if (!isPublicUser(user)) throw new Error('Invalid user response');
   return publicUser(user);
+});
+
+export async function requireUser() {
+  const user = await currentUser();
+  if (!user) redirect(routes.login);
+  return user;
 }

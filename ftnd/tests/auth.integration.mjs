@@ -92,19 +92,40 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       assert.equal('accessToken' in body, false);
       assert.equal(body.user.id, id);
     });
-    await t.test('cookie restores identity and permits a fresh workspace page request', async () => {
+    await t.test('cookie restores identity and renders shared navigation across all four workspace pages', async () => {
       assert.ok(cookie, 'login must succeed before checking session');
       const result = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie } });
       assert.equal(result.status, 200);
       assert.equal((await result.json()).id, id);
-      const page = await fetch(base + '/dashboard', { headers: { Cookie: cookie } });
-      assert.equal(page.status, 200);
-      assert.match(await page.text(), new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+      const escapedEmail = new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const expectedPages = [
+        ['/dashboard', 'Dashboard', '数据总览'],
+        ['/company', 'Company', '供应链公司'],
+        ['/order', 'Order', '订单追踪'],
+        ['/user', 'User', '用户与账户'],
+      ];
+      for (const [path, title, subtitle] of expectedPages) {
+        const page = await fetch(base + path, { headers: { Cookie: cookie } });
+        assert.equal(page.status, 200);
+        const html = await page.text();
+        assert.match(html, escapedEmail);
+        assert.match(html, /aria-label="工作台导航"/);
+        assert.match(html, new RegExp(`>${title}</h1>`));
+        assert.match(html, new RegExp(`>${subtitle}</h2>`));
+        assert.match(html, new RegExp(`href="${path}"[^>]*aria-current="page"|aria-current="page"[^>]*href="${path}"`));
+      }
     });
     await t.test('invalid cookie returns 401 and expires the browser cookie', async () => {
       const result = await fetch(base + '/api/auth/me', { headers: { Cookie: cookieName + '=invalid' } });
       assert.equal(result.status, 401);
       assert.match(result.headers.get('set-cookie'), /Max-Age=0/i);
+      const page = await fetch(base + '/dashboard', {
+        headers: { Cookie: cookieName + '=invalid' },
+        redirect: 'manual',
+      });
+      assert.equal(page.status, 307);
+      assert.equal(new URL(page.headers.get('location'), base).pathname, '/login');
     });
     await t.test('logout expires cookie; subsequent no-cookie request is unauthorized', async () => {
       const result = await post('/api/auth/logout', {}, { Cookie: cookie });
