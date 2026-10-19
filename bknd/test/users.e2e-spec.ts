@@ -15,7 +15,12 @@ describe('Users table (PostgreSQL)', () => {
   let users: UsersService;
   let hasher: PasswordHasher;
   let pool: pg.Pool;
-  const testEmail = () => `step2-${randomUUID()}@example.test`;
+  const testEmails: string[] = [];
+  const testEmail = () => {
+    const email = `step2-${randomUUID()}@example.test`;
+    testEmails.push(email);
+    return email;
+  };
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
@@ -27,8 +32,14 @@ describe('Users table (PostgreSQL)', () => {
     pool = moduleRef.get(PG_POOL);
   });
   afterAll(async () => {
-    await pool.query(`DELETE FROM users WHERE email LIKE 'step2-%@example.test'`);
-    await moduleRef.close();
+    try {
+      if (pool)
+        await pool.query('DELETE FROM users WHERE email = ANY($1::text[])', [
+          testEmails,
+        ]);
+    } finally {
+      await moduleRef?.close();
+    }
   });
 
   it('creates a user and stores only an Argon2id hash', async () => {

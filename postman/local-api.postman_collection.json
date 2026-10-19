@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Amazon Agent — Local API",
-    "description": "本地 NestJS 环境验证。先启动 bknd；JWT 测试需要在环境变量 token 中填写本地生成的短期 Token。",
+    "description": "本地 NestJS 环境验证。先通过 POST /auth/login 获取真实用户的 accessToken，再填写本地环境变量 token。认证请求见 auth-api.postman_collection.json。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -40,7 +40,7 @@
       "request": { "method": "GET", "url": "{{baseUrl}}/auth/me", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] } },
       "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
         "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
-        "pm.test('身份为本地测试用户', () => pm.expect(pm.response.json().subject).to.eql('local-dev-user'));"
+        "pm.test('返回真实用户且不含密码', () => pm.expect(pm.response.json()).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'));"
       ] } }]
     },
     {

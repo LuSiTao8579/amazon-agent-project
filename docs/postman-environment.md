@@ -1,49 +1,40 @@
 # Postman 接口调试
 
-## 文件
+## 集合
 
-- `postman/local-api.postman_collection.json`：6 个请求及响应断言（测试脚本）。
-- `postman/local.postman_environment.json`：本地地址变量和空的 Token 占位符。
-- `bknd/scripts/dev-token.mjs`：本地生成有效期 15 分钟的测试 JWT。
+- postman/local-api.postman_collection.json：原有 6 个环境验证请求，05 已改为读取真实用户。
+- postman/auth-api.postman_collection.json：新增注册、登录、当前用户三个请求。
+- postman/local.postman_environment.json：本地 baseUrl 和空 token 占位符。
+- 原生目录 postman/collections 中旧 05 请求的响应断言也已同步。
 
-## 导入 Postman
+## 使用顺序
 
-1. 打开 Postman 并自行完成登录。当前版本提示保存和管理 Collections 需要账号；轻量客户端仅用于发送请求，不能替代下面的集合导入流程。
-2. 点击 Import，选择上述两个 JSON 文件。
-3. 在环境下拉框选择 Amazon Agent — Local。
-4. 启动后端：
+1. 确保 Docker 中 PostgreSQL 正常，第二步迁移已完成。
+2. 在 bknd 运行 npm run start:dev。
+3. 在 Postman 导入上述 JSON，选中 Amazon Agent — Local 环境。
+4. 打开认证集合“01 — 注册”，填写演示邮箱、密码并发送；首次返回 201，再次使用相同邮箱返回 409。
+5. 打开“02 — 登录”，用同一邮箱密码发送，返回 200 与 accessToken。
+6. 将 accessToken 复制到本地环境的 token 值，再发送“03 — 当前用户”，应得到真实用户信息。
+7. 原环境集合 05 请求也使用这个 Token。03、04 返回 401 是预期通过。
 
-```bash
-cd /Users/lusitao/Desktop/amazon-agent-project/bknd
-npm run start:dev
-```
+注册密码规则为 15–128 字符，允许符号/空格但不能全为空白。
+演示集合中的邮箱、密码是公开测试值，可换成自己的本地测试账号。
+手动注册的账号会保留在本地数据库。
 
-另开一个终端，在 bknd 目录执行：
+## 注意事项
 
-```bash
-node scripts/dev-token.mjs
-```
-
-将输出的 Token 填到 Postman 环境变量 token 的本地值中，不要发布或导出真实 Token 到 Git。
-Token 过期后重新生成。本操作不需要也不应该把 JWT_SECRET 粘贴到 Postman。
-
-## 执行
-
-先打开 02 — 健康检查，点击 Send，应得到 200 和 status: ok。
-然后执行所有请求，或在支持 Collection Runner 的模式中运行整个集合。
-共 6 个请求、10 条断言。03 和 04 返回 401 是预期通过；05 应返回 200。
-测试脚本位于各请求 Scripts → Post-response（旧版叫 Tests）。
+scripts/dev-token.mjs 已停用，不能再用旧 local-dev-user Token 代替登录。
+Token 15 分钟过期后重新登录；JWT_SECRET 不能粘贴到 Postman。
+真实 Token 和密码不要保存到 Git 跟踪的 JSON/YAML，也不要导出到仓库。
+如果已导入过旧 JSON，需要更新或重新导入，以使用新的 05 响应断言。
 
 ## 常见问题
 
-- ECONNREFUSED：先启动后端，确认端口 3001。
-- 05 返回 401：检查环境是否选中、Token 是否已填写或过期。
-- 地址仍显示 {{baseUrl}}：选择导入的环境。
-- Postman 提示登录：可自行完成登录；本项目代码和后端运行不依赖 Postman 账号。
+- ECONNREFUSED：确认后端启动并监听 3001，数据库运行。
+- 400：查看响应 message，检查格式、密码长度和是否传入多余字段。
+- 401：检查邮箱密码，或是否使用登录返回的、尚未过期的 Token。
+- 409：邮箱已注册，直接登录或换一个测试邮箱。
+- 地址仍是 {{baseUrl}}：选择本地环境。
+- 旧断言仍在检查 subject/local-dev-user：更新集合；当前 /auth/me 返回 id、email、createdAt、updatedAt。
 
-## 范围
-
-已通过 Newman（Postman 集合命令行运行器）验证：6 个请求和 10 条断言全部通过；真实测试 Token 仅放在运行内存中，未写入导出的环境文件。
-桌面应用已安装；集合导入留待用户完成账号登录后操作。
-这些测试覆盖后端首页、健康检查、JWT 拒绝与通过、Swagger 文档。
-不代表数据库和 Agent 已接入后端，业务联调仍是下一阶段工作。
+测试脚本位于请求的 Scripts → Post-response。自动测试与完整接口契约见 [第三步说明](auth-step-3.md)。

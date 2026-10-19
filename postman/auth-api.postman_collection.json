@@ -1,0 +1,112 @@
+{
+  "info": {
+    "name": "Amazon Agent — Auth API",
+    "description": "第三步真实注册登录。按注册、登录、当前用户依次调试；登录后手动将 accessToken 填到本地环境 token。首次注册201，重复邮箱409。示例凭证仅供本地开发。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 — 注册",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/signup",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"step3-learner@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('首次注册 201；重复邮箱 409', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+              "if (pm.response.code === 201) { pm.test('注册不自动登录且不泄露密码', () => { const data = pm.response.json(); pm.expect(data).not.to.have.property('accessToken'); pm.expect(data.user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); }); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 — 登录",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"step3-learner@example.test\",\n  \"password\": \"Long learning password!2026\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('返回短期 JWT 和公开用户字段', () => { const data = pm.response.json(); pm.expect(data.accessToken).to.be.a('string').and.not.empty; pm.expect(data.expiresIn).to.eql(900); pm.expect(data.user).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 — 当前用户",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/auth/me",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('返回真实用户且不泄露密码', () => pm.expect(pm.response.json()).to.have.all.keys('id', 'email', 'createdAt', 'updatedAt'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

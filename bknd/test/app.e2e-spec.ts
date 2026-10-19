@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
+import { setupApp } from '../src/setup-app.js';
 
 describe('Backend environment', () => {
   let app: INestApplication<App>;
@@ -14,6 +15,7 @@ describe('Backend environment', () => {
       imports: [AppModule],
     }).compile();
     app = fixture.createNestApplication();
+    setupApp(app);
     await app.init();
     jwt = app.get(JwtService);
   });
@@ -42,13 +44,12 @@ describe('Backend environment', () => {
       .set('Authorization', 'Bearer invalid')
       .expect(401);
   });
-  it('accepts a valid signed token', async () => {
+  it('rejects a signed token that does not identify a real user', async () => {
     const token = await jwt.signAsync({ sub: 'test-user' });
     await request(app.getHttpServer())
       .get('/auth/me')
       .set('Authorization', `Bearer ${token}`)
-      .expect(200)
-      .expect({ subject: 'test-user' });
+      .expect(401);
   });
   it('rejects expired tokens', async () => {
     const token = await jwt.signAsync({ sub: 'test-user' }, { expiresIn: -1 });
