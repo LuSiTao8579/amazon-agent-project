@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import Providers from './providers';
 
 export const metadata: Metadata = {
-  title: 'Agent 项目 · 前端环境验证',
-  description: 'Next.js 和 Material UI v6 本地开发环境',
+  title: {
+    default: '供应链工作台 · 页面框架',
+    template: '%s | 供应链工作台',
+  },
+  description: '供应链工作台的注册、登录与业务页面原型，尚未接入认证 API。',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
