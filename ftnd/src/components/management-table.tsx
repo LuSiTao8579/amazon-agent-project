@@ -1,5 +1,6 @@
 'use client';
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Alert, Box, Button, Checkbox, Chip, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material';
 import { errorMessage } from '@/lib/auth-contract';
 
@@ -9,6 +10,7 @@ const userFields: Field[] = [{key:'name',label:'姓名'},{key:'email',label:'邮
 const companyFields: Field[] = [{key:'companyCode',label:'公司编码'},{key:'companyName',label:'名称'},{key:'level',label:'等级',type:'number'},{key:'country',label:'国家'},{key:'city',label:'城市'},{key:'foundedYear',label:'成立年份',type:'number'},{key:'annualRevenue',label:'年营收',type:'number'},{key:'employees',label:'员工数量',type:'number'}];
 
 export default function ManagementTable({ kind, isAdmin }: { kind: 'users'|'companies'; isAdmin: boolean }) {
+  const router = useRouter();
   const company = kind === 'companies';
   const [rows,setRows] = useState<Row[]>([]);
   const [total,setTotal] = useState(0);
@@ -41,14 +43,14 @@ export default function ManagementTable({ kind, isAdmin }: { kind: 'users'|'comp
       try {
         const response = await fetch('/api/manage/'+kind+'?'+query, {signal:controller.signal,cache:'no-store'});
         const data = await response.json();
-        if(response.status===401) { window.location.assign('/login'); return; }
+        if(response.status===401) { router.replace('/login'); return; }
         if(!response.ok) throw new Error(errorMessage(data,'读取失败'));
         if(!controller.signal.aborted) { setRows(data.items); setTotal(data.total); }
       } catch(e) { if(!controller.signal.aborted) {setRows([]);setError(e instanceof Error?e.message:'读取失败');} }
       finally {if(!controller.signal.aborted)setLoading(false);}
     },250);
     return () => {clearTimeout(timer);controller.abort();};
-  },[kind,company,search,filters,page,size,revision,permitted]);
+  },[kind,company,search,filters,page,size,revision,permitted,router]);
 
   async function mutate(path: string, method: string, body: unknown) {
     if(lock.current) return;
@@ -56,7 +58,7 @@ export default function ManagementTable({ kind, isAdmin }: { kind: 'users'|'comp
     try {
       const response = await fetch('/api/manage/'+kind+path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const data = await response.json();
-      if(response.status===401) {window.location.assign('/login');return;}
+      if(response.status===401) {router.replace('/login');return;}
       if(!response.ok) throw new Error(errorMessage(data,'保存失败'));
       setForm(null);setDeleting(null);setSelected([]);setMessage('操作成功，数据已保存');
       setPage(0);setRevision(v=>v+1);

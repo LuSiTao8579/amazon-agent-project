@@ -121,8 +121,12 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         const html = await page.text();
         assert.match(html, escapedEmail);
         assert.match(html, /aria-label="工作台导航"/);
-        assert.match(html, new RegExp(`>${title}</h1>`));
-        assert.match(html, new RegExp(`>${subtitle}</h2>`));
+        if (path === '/user') assert.match(html, /用户管理仅对管理员开放/);
+        else if (path === '/company') assert.match(html, /公司表格/);
+        else {
+          assert.match(html, new RegExp(`>${title}</h1>`));
+          assert.match(html, new RegExp(`>${subtitle}</h2>`));
+        }
         assert.match(html, new RegExp(`href="${path}"[^>]*aria-current="page"|aria-current="page"[^>]*href="${path}"`));
       }
     });
