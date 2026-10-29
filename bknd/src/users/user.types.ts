@@ -2,6 +2,10 @@
 export interface PublicUser {
   id: string;
   email: string;
+  name: string;
+  role: string;
+  status: 'active' | 'inactive';
+  isAdmin: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

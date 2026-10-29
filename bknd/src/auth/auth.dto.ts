@@ -56,6 +56,18 @@ export class LoginDto extends EmailDto {
 }
 
 export class PublicUserDto {
+  @ApiProperty({ type: String })
+  name: string;
+
+  @ApiProperty({ type: String, enum: ['Member', 'Manager', 'Analyst'] })
+  role: string;
+
+  @ApiProperty({ type: String, enum: ['active', 'inactive'] })
+  status: string;
+
+  @ApiProperty({ type: Boolean, description: '管理权限，不能通过注册/用户编辑接口提升' })
+  isAdmin: boolean;
+
   @ApiProperty({ type: String, format: 'uuid' })
   id: string;
 

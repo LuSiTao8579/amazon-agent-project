@@ -7,8 +7,8 @@ import {
   type UserCredentials,
 } from './user.types.js';
 
-const PUBLIC_COLUMNS =
-  'id, email, created_at AS "createdAt", updated_at AS "updatedAt"';
+export const PUBLIC_COLUMNS =
+  'id, email, name, role, status, is_admin AS "isAdmin", created_at AS "createdAt", updated_at AS "updatedAt"';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** PostgreSQL 唯一约束冲突的错误码。 */
@@ -29,12 +29,15 @@ export class UsersService {
   async create(input: {
     email: string;
     passwordHash: string;
+    name?: string;
+    role?: string;
+    status?: string;
   }): Promise<PublicUser> {
     try {
       const { rows } = await this.pool.query<PublicUser>(
-        `INSERT INTO users (email, password_hash) VALUES ($1, $2)
+        `INSERT INTO users (email, password_hash, name, role, status) VALUES ($1, $2, $3, $4, $5)
          RETURNING ${PUBLIC_COLUMNS}`,
-        [normalizeEmail(input.email), input.passwordHash],
+        [normalizeEmail(input.email), input.passwordHash, input.name ?? '', input.role ?? 'Member', input.status ?? 'active'],
       );
       return rows[0];
     } catch (error) {

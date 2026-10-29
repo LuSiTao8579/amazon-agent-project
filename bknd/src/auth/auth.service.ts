@@ -52,7 +52,7 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('邮箱或密码错误');
 
     const user = await this.users.findById(credentials.id);
-    if (!user) throw new UnauthorizedException('邮箱或密码错误');
+    if (!user || user.status !== 'active') throw new UnauthorizedException('邮箱或密码错误');
 
     const accessToken = await this.jwt.signAsync({ sub: user.id });
     return {

@@ -71,6 +71,10 @@ describe('Authentication API (real PostgreSQL)', () => {
       'createdAt',
       'email',
       'id',
+      'isAdmin',
+      'name',
+      'role',
+      'status',
       'updatedAt',
     ]);
     expect(result.body.user.email).toBe(email);

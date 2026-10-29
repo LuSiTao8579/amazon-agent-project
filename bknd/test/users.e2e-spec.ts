@@ -53,6 +53,10 @@ describe('Users table (PostgreSQL)', () => {
     expect(created).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       email,
+      name: '',
+      role: 'Member',
+      status: 'active',
+      isAdmin: false,
       createdAt: expect.any(Date),
       updatedAt: expect.any(Date),
     });

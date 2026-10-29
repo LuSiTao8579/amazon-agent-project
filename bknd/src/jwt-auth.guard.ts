@@ -52,7 +52,7 @@ export class JwtAuthGuard implements CanActivate {
 
     // Keep DB errors outside the JWT catch: an outage is not an invalid password/token.
     const user = await this.users.findById(subject);
-    if (!user) throw new UnauthorizedException('用户不存在或登录状态已失效');
+    if (!user || user.status !== 'active') throw new UnauthorizedException('用户不存在或登录状态已失效');
     request.user = user;
     return true;
   }
