@@ -2,6 +2,7 @@ export type AuthMode = 'signup' | 'login';
 export type Credentials = { email: string; password: string };
 export type FieldErrors = Partial<Record<keyof Credentials, string>>;
 export type PublicUser = {
+  isAdmin?: boolean;
   id: string;
   email: string;
   createdAt: string;
@@ -21,7 +22,7 @@ export function isPublicUser(value: unknown): value is PublicUser {
 
 // Explicitly select public fields: never forward unexpected secrets.
 export function publicUser(user: PublicUser): PublicUser {
-  return { id: user.id, email: user.email, createdAt: user.createdAt, updatedAt: user.updatedAt };
+  return { id: user.id, email: user.email, createdAt: user.createdAt, updatedAt: user.updatedAt, ...(typeof user.isAdmin === 'boolean' ? { isAdmin: user.isAdmin } : {}) };
 }
 
 export function errorMessage(body: unknown, fallback: string): string {

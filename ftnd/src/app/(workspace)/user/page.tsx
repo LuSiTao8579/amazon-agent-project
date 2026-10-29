@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import WorkspacePageContent from '@/components/workspace-page-content';
+import ManagementTable from '@/components/management-table';
 import { requireUser } from '@/lib/auth-server';
 
 export const metadata: Metadata = {
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   const user = await requireUser();
-  return <WorkspacePageContent section="user" user={user} />;
+  return <ManagementTable kind="users" isAdmin={user.isAdmin === true} />;
 }
