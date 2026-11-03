@@ -102,6 +102,17 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       assert.equal('accessToken' in body, false);
       assert.equal(body.user.id, id);
     });
+    await t.test('dashboard proxy returns real database statistics only when signed in', async () => {
+      assert.equal((await fetch(base + '/api/manage/dashboard')).status, 401);
+      const response = await fetch(base + '/api/manage/dashboard', { headers: { Cookie: cookie } });
+      assert.equal(response.status, 200);
+      const dashboard = await response.json();
+      const counts = await db.query('SELECT count(*)::int AS n FROM companies');
+      assert.equal(dashboard.summary.companyCount, counts.rows[0].n);
+      assert.equal(dashboard.levelDistribution.reduce((sum, item) => sum + item.count, 0), counts.rows[0].n);
+      if (counts.rows[0].n) assert.equal(dashboard.yearlyGrowth.at(-1).cumulativeCompanies, counts.rows[0].n);
+      assert.equal((await fetch(base + '/api/manage/dashboard', {method:'POST',headers:{Cookie:cookie,Origin:base,'Content-Type':'application/json'},body:'{}'})).status,404);
+    });
     await t.test('cookie restores identity and renders shared navigation across all four workspace pages', async () => {
       assert.ok(cookie, 'login must succeed before checking session');
       const result = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie } });
