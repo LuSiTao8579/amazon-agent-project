@@ -56,6 +56,15 @@ describe('用户与公司管理 API', () => {
     await request(server).post('/users/bulk-delete').auth(adminToken, { type: 'bearer' }).send({ ids: [id] }).expect(200);
     await request(server).get(`/users/${id}`).auth(adminToken, { type: 'bearer' }).expect(404);
   });
+  it('Dashboard需要登录且汇总与数据库一致', async () => {
+    const server = app.getHttpServer();
+    await request(server).get('/dashboard').expect(401);
+    const result = await request(server).get('/dashboard').auth(memberToken, { type: 'bearer' }).expect(200);
+    const count = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM companies');
+    expect(result.body.summary.companyCount).toBe(count.rows[0].n);
+    expect(result.body.levelDistribution.reduce((sum: number, row: {count: number}) => sum + row.count, 0)).toBe(count.rows[0].n);
+    if (count.rows[0].n) expect(result.body.yearlyGrowth.at(-1).cumulativeCompanies).toBe(count.rows[0].n);
+  });
   it('公司可查询，写入需管理员，关联公司受保护', async () => {
     const server = app.getHttpServer();
     const company = { companyCode: code, companyName: 'Test Company', level: 2, country: 'UK', city: 'London', foundedYear: 2000, annualRevenue: 100, employees: 2 };
