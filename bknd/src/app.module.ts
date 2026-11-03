@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UserManagementModule } from './users/user-management.module.js';
 import { CompaniesModule } from './companies/companies.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { CompaniesModule } from './companies/companies.module.js';
     AuthModule,
     UserManagementModule,
     CompaniesModule,
+    DashboardModule,
   ],
   controllers: [AppController, EnvironmentController],
   providers: [AppService],
