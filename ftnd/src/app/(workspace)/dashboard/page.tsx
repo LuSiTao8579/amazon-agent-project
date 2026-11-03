@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import WorkspacePageContent from '@/components/workspace-page-content';
+import Dashboard from '@/components/dashboard';
 import { requireUser } from '@/lib/auth-server';
 
 export const metadata: Metadata = {
@@ -7,6 +7,6 @@ export const metadata: Metadata = {
 };
 
 export default async function Page() {
-  const user = await requireUser();
-  return <WorkspacePageContent section="dashboard" user={user} />;
+  await requireUser();
+  return <Dashboard />;
 }

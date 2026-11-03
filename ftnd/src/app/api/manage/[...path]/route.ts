@@ -5,7 +5,8 @@ import { errorMessage } from '@/lib/auth-contract';
 // 白名单代理：JWT只在服务端读取，不交给浏览器JavaScript。
 async function handle(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
-  if (!['users', 'companies'].includes(path[0]) || path.length > 2 ||
+  if (!['users', 'companies', 'dashboard'].includes(path[0]) || path.length > 2 ||
+      (path[0] === 'dashboard' && (path.length !== 1 || request.method !== 'GET')) ||
       path.some(segment => !/^[A-Za-z0-9_-]+$/.test(segment))) return json({ message: '接口不存在' }, 404);
   if (request.method !== 'GET') {
     const rejected = checkMutation(request);
