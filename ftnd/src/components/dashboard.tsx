@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { errorMessage } from '@/lib/auth-contract';
 import LevelChart from './level-chart';
+import GrowthChart from './growth-chart';
 
 export type DashboardData = { summary: { companyCount:number; totalRevenue:number; countryCount:number; employeeCount:number };
   levelDistribution: {level:number;count:number;percentage:number}[];
@@ -42,5 +43,6 @@ export default function Dashboard() {
       {cards.map(([title,value,unit])=><Paper key={title} variant="outlined" sx={{p:3}}><Typography color="text.secondary">{title}</Typography><Typography variant="h4" sx={{my:1}} title={value.toLocaleString()}>{compact(value)}</Typography><Typography variant="body2">{unit}</Typography></Paper>)}
     </Box>}
     {data && <LevelChart rows={data.levelDistribution}/>}
+    {data && <GrowthChart rows={data.yearlyGrowth}/>}
   </Stack>;
 }
