@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { errorMessage } from '@/lib/auth-contract';
+import LevelChart from './level-chart';
 
 export type DashboardData = { summary: { companyCount:number; totalRevenue:number; countryCount:number; employeeCount:number };
   levelDistribution: {level:number;count:number;percentage:number}[];
@@ -40,5 +41,6 @@ export default function Dashboard() {
     {data && <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(2, 1fr)',lg:'repeat(4, 1fr)'},gap:2}}>
       {cards.map(([title,value,unit])=><Paper key={title} variant="outlined" sx={{p:3}}><Typography color="text.secondary">{title}</Typography><Typography variant="h4" sx={{my:1}} title={value.toLocaleString()}>{compact(value)}</Typography><Typography variant="body2">{unit}</Typography></Paper>)}
     </Box>}
+    {data && <LevelChart rows={data.levelDistribution}/>}
   </Stack>;
 }
