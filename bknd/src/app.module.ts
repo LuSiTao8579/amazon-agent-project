@@ -12,7 +12,7 @@ import { AiAgentModule } from './ai-agent/ai-agent.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.ai', '.env'] }),
     DatabaseModule,
     AuthModule,
     UserManagementModule,
