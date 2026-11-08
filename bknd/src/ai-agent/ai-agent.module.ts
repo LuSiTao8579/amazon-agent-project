@@ -7,10 +7,11 @@ import { ChatRepository } from './chat.repository.js';
 import { ModelService } from './providers/model.service.js';
 import { ChatTurnRepository } from './chat-turn.repository.js';
 import { ChatTurnService } from './chat-turn.service.js';
+import { ChatAttachmentService } from './chat-attachment.service.js';
 
 @Module({
   imports: [AuthModule, UsersModule],
   controllers: [AiAgentController],
-  providers: [AiAgentService, ChatRepository, ModelService, ChatTurnRepository, ChatTurnService],
+  providers: [AiAgentService, ChatRepository, ModelService, ChatTurnRepository, ChatTurnService, ChatAttachmentService],
 })
 export class AiAgentModule {}

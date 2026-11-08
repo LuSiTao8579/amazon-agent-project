@@ -58,6 +58,7 @@ describe('AI会话 API (真实 PostgreSQL)', () => {
     const docs = await request(server).get('/docs-json').expect(200);
     expect(docs.body.paths['/ai-agent/sessions'].post.security).toBeDefined();
     expect(docs.body.paths['/ai-agent/sessions/{id}/messages'].get).toBeDefined();
+    expect(docs.body.paths['/ai-agent/sessions/{id}/attachments'].post.requestBody.content['multipart/form-data']).toBeDefined();
   });
 
   it('创建多个会话、写入用户消息并读取模拟AI消息', async () => {
@@ -113,4 +114,26 @@ describe('AI会话 API (真实 PostgreSQL)', () => {
     await request(server).post(target).auth(firstToken, {type:'bearer'}).send({text:'x'.repeat(8001)}).expect(400);
     await request(server).post(target).auth(firstToken, {type:'bearer'}).send({text:'hello',role:'assistant'}).expect(400);
   });
+  it('附件上传与下载检查会话归属、大小和格式，并在历史中恢复', async () => {
+    const server = app.getHttpServer();
+    const id = sessionIds[0];
+    const path = `/ai-agent/sessions/${id}/attachments`;
+    const contents = Buffer.from('company,revenue\nExample,42\n');
+    await request(server).post(path).attach('file', contents, 'sample.csv').expect(401);
+    await request(server).post(path).auth(secondToken, {type:'bearer'}).attach('file', contents, 'sample.csv').expect(404);
+    await request(server).post(path).auth(firstToken, {type:'bearer'}).attach('file', contents, 'sample.exe').expect(400);
+    await request(server).post(path).auth(firstToken, {type:'bearer'}).attach('file', Buffer.from('bad'), 'sample.pdf').expect(400);
+    await request(server).post(path).auth(firstToken, {type:'bearer'}).attach('file', Buffer.alloc(5 * 1024 * 1024 + 1), 'large.txt').expect(413);
+    const uploaded = await request(server).post(path).auth(firstToken, {type:'bearer'}).attach('file', contents, 'sample.csv').expect(201);
+    expect(uploaded.body.attachment.name).toBe('sample.csv');
+    expect(JSON.stringify(uploaded.body)).not.toContain('storage_key');
+    const attachment = uploaded.body.attachment.id as string;
+    const history = await request(server).get(`/ai-agent/sessions/${id}/messages`).auth(firstToken, {type:'bearer'}).expect(200);
+    expect(history.body.items.at(-1).attachments[0]).toMatchObject({ id: attachment, name: 'sample.csv' });
+    await request(server).get(`${path}/${attachment}`).auth(secondToken, {type:'bearer'}).expect(404);
+    const download = await request(server).get(`${path}/${attachment}`).auth(firstToken, {type:'bearer'}).expect(200);
+    expect(download.headers['content-disposition']).toContain('attachment');
+    expect(download.body).toEqual(contents);
+  });
+
 });

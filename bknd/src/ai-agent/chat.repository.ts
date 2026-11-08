@@ -50,7 +50,9 @@ export class ChatRepository {
     const { rows } = await this.pool.query<ChatMessageEntity>(`
       SELECT m.id, m.session_id AS "sessionId", m.position, m.role,
         m.message_type AS "messageType", m.content, m.created_at AS "createdAt",
-        t.id AS "turnId", t.status AS "turnStatus", t.error_code AS "errorCode"
+        t.id AS "turnId", t.status AS "turnStatus", t.error_code AS "errorCode",
+        COALESCE((SELECT json_agg(json_build_object('id', a.id, 'name', a.original_name, 'size', a.byte_size))
+          FROM ai_chat_attachments a WHERE a.message_id=m.id), '[]'::json) AS attachments
       FROM ai_chat_messages m JOIN ai_chat_sessions s ON s.id = m.session_id
       LEFT JOIN ai_chat_turns t ON t.user_message_id = m.id
       WHERE s.id = $1 AND s.user_id = $2 ORDER BY m.position LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset]);

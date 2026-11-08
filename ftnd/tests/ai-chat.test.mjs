@@ -19,3 +19,11 @@ test('unknown and malformed messages are visible placeholders', () => {
   assert.equal(normalizeMessage({ ...base, messageType: 'text', content: { text: 42 } }).type, 'unsupported');
   assert.throws(() => normalizeMessage({ ...base, role: 'system' }));
 });
+
+test('attachment metadata is whitelisted and checked before display', () => {
+  const id = '39b56ffd-72f4-4897-8d4a-cead9c935d23';
+  const result = normalizeMessage({ ...base, messageType:'text', content:{text:'上传成功'}, attachments:[
+    {id, name:'test.csv', size:'12', storageKey:'private'}, {id:'invalid', name:'bad', size:20},
+  ]});
+  assert.deepEqual(result.attachments, [{id, name:'test.csv', size:12}]);
+});

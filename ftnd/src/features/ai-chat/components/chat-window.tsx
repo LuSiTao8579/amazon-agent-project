@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, CircularProgress, IconButton, Paper, Stack, Typography } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import type { RecentHistory } from '../types';
 import MessageList from './message-list';
+import ChatInput from './chat-input';
+import { ATTACHMENT_EXTENSIONS, MAX_ATTACHMENT_BYTES } from '../upload-policy';
 
 type Props = { onClose: () => void };
 
@@ -14,19 +16,83 @@ type Props = { onClose: () => void };
 export default function ChatWindow({ onClose }: Props) {
   const [history, setHistory] = useState<RecentHistory | null>(null);
   const [error, setError] = useState('');
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState<'sending' | 'uploading' | null>(null);
+  const busyRef = useRef(false);
+  const pendingRequest = useRef<{ id: string; text: string; sessionId: string } | null>(null);
+  const bottom = useRef<HTMLDivElement>(null);
+
+  async function loadHistory(signal?: AbortSignal) {
+    const response = await fetch('/api/ai-chat/history', { cache: 'no-store', signal });
+    const body = await response.json();
+    if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : '无法加载会话');
+    setHistory(body as RecentHistory);
+  }
   useEffect(() => {
     const controller = new AbortController();
-    // 关闭窗口时取消请求；再次打开会从后端重新加载，而不是伪造历史。
     fetch('/api/ai-chat/history', { cache: 'no-store', signal: controller.signal })
       .then(async response => {
         const body = await response.json();
         if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : '无法加载会话');
         return body as RecentHistory;
-      })
-      .then(setHistory)
-      .catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '无法加载会话'); });
+      }).then(setHistory).catch(reason => {
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '无法加载会话');
+      });
     return () => controller.abort();
   }, []);
+  useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }); }, [history, busy]);
+
+  async function createOrGetSession() {
+    if (history?.session) return history.session;
+    const response = await fetch('/api/ai-chat/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || '无法创建会话');
+    const session = { id: body.id as string, title: body.title as string };
+    setHistory(previous => previous ? { ...previous, session } : previous);
+    return session;
+  }
+  async function send() {
+    if (!draft.trim() || busyRef.current || !history) return;
+    busyRef.current = true; setBusy('sending'); setError('');
+    try {
+      const session = await createOrGetSession();
+      const text = draft;
+      if (!pendingRequest.current || pendingRequest.current.text !== text || pendingRequest.current.sessionId !== session.id)
+        pendingRequest.current = { id: crypto.randomUUID(), text, sessionId: session.id };
+      const response = await fetch(`/api/ai-chat/sessions/${session.id}/turns`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: pendingRequest.current.id, text }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        // 已确定生成失败时可用新的请求编号重试；网络不确定时沿用编号，避免重复生成。
+        if (body.status === 'failed') pendingRequest.current = null;
+        await loadHistory().catch(() => {});
+        throw new Error(body.message || '发送失败，请稍后重试');
+      }
+      pendingRequest.current = null;
+      setDraft('');
+      await loadHistory().catch(() => { throw new Error('消息已发送，但历史刷新失败，请重新打开聊天窗口。'); });
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '发送失败，请稍后重试'); }
+    finally { busyRef.current = false; setBusy(null); }
+  }
+  async function upload(file: File) {
+    if (busyRef.current || !history) return;
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !ATTACHMENT_EXTENSIONS.some(allowed => allowed === extension) || !file.size || file.size > MAX_ATTACHMENT_BYTES) {
+      setError('请选择支持的非空文件，大小不超过 5 MB。'); return;
+    }
+    busyRef.current = true; setBusy('uploading'); setError('');
+    try {
+      const session = await createOrGetSession();
+      const form = new FormData(); form.append('file', file);
+      const response = await fetch(`/api/ai-chat/sessions/${session.id}/attachments`, { method: 'POST', body: form });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || '附件上传失败');
+      await loadHistory().catch(() => { throw new Error('附件已上传，但历史刷新失败，请重新打开聊天窗口。'); });
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '附件上传失败，请重新选择文件'); }
+    finally { busyRef.current = false; setBusy(null); }
+  }
   return <Paper component="section" role="dialog" aria-modal="false" aria-labelledby="ai-chat-title"
     onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}
     elevation={12} sx={{
@@ -48,19 +114,22 @@ export default function ChatWindow({ onClose }: Props) {
       <IconButton aria-label="关闭 AI 助手" onClick={onClose} autoFocus><CloseRoundedIcon /></IconButton>
     </Stack>
     <Box aria-live="polite" sx={{ flex: 1, overflowY: 'auto', p: 2.5, bgcolor: 'background.default' }}>
-      {error ? <Alert severity="error">{error}</Alert> : !history ?
+      {!history && error ? null : !history ?
         <Stack alignItems="center" sx={{ py: 5 }}><CircularProgress size={24} aria-label="加载会话" /></Stack> :
         !history.session || history.messages.length === 0 ?
           <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ height: '100%', textAlign: 'center' }}>
             <ChatBubbleOutlineRoundedIcon color="primary" sx={{ fontSize: 38 }} />
             <Typography variant="h6">你好，有什么可以帮你？</Typography>
-            <Typography variant="body2" color="text.secondary">暂无消息，聊天功能正在准备中。</Typography>
+            <Typography variant="body2" color="text.secondary">发送消息开始对话，或先上传附件。</Typography>
           </Stack> :
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">最近会话：{history.session.title}</Typography>
-            <MessageList messages={history.messages} hasMore={history.hasMore} />
+            <MessageList messages={history.messages} hasMore={history.hasMore} sessionId={history.session.id} />
           </Stack>}
+      {busy && <Typography variant="caption" color="text.secondary">{busy === 'sending' ? '正在等待 AI 回复…' : '正在上传附件…'}</Typography>}
+      <div ref={bottom} />
     </Box>
-    <Typography variant="caption" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>消息输入功能正在准备中</Typography>
+    {error && <Alert severity="error" sx={{ mx: 1.5, my: 0.5 }}>{error}</Alert>}
+    <ChatInput text={draft} onText={setDraft} onSend={send} onFile={upload} busy={Boolean(busy)} disabled={!history} />
   </Paper>;
 }

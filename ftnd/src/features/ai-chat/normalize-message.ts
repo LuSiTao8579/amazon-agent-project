@@ -1,4 +1,5 @@
 import type { ChatMessage } from './types';
+import { MAX_ATTACHMENT_BYTES } from './upload-policy.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -16,10 +17,17 @@ export function normalizeMessage(row: unknown): ChatMessage {
     turnStatus: row.turnStatus === 'pending' || row.turnStatus === 'completed' || row.turnStatus === 'failed'
       ? row.turnStatus : null,
   } as const;
+  const attachments = Array.isArray(row.attachments) ? row.attachments.flatMap((item: unknown) => {
+    if (!isRecord(item) || typeof item.id !== 'string' || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(item.id) ||
+      typeof item.name !== 'string' || item.name.length > 200) return [];
+    const size = Number(item.size);
+    return Number.isSafeInteger(size) && size > 0 && size <= MAX_ATTACHMENT_BYTES ? [{ id: item.id, name: item.name, size }] : [];
+  }).slice(0, 10) : [];
+  const withAttachments = attachments.length ? { ...base, attachments } : base;
   const content = isRecord(row.content) ? row.content : {};
   if (row.messageType === 'text') {
     return typeof content.text === 'string'
-      ? { ...base, type: 'text', content: { text: content.text } }
+      ? { ...withAttachments, type: 'text', content: { text: content.text } }
       : { ...base, type: 'unsupported', content: { reason: '文本消息格式不正确，暂时无法显示。' } };
   }
   if (row.messageType === 'table' || row.messageType === 'chart' || row.messageType === 'report' || row.messageType === 'confirmation') {

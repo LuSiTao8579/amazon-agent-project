@@ -128,7 +128,23 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         assert.deepEqual(body.messages.map(m => [m.role,m.type,m.content.text]), [['user','text','测试提问'],['assistant','text','测试回答']]);
         assert.equal(body.hasMore, false);
         assert.equal(JSON.stringify(body).includes(cookieName), false);
+        const form = new FormData();
+        form.append('file', new File(['name,revenue\nExample,42'], 'sample.csv', {type:'text/csv'}));
+        const path = `/api/ai-chat/sessions/${sessionId}/attachments`;
+        assert.equal((await fetch(base + path, {method:'POST',body:form})).status, 401);
+        const rejected = await fetch(base + path, {method:'POST',headers:{Cookie:cookie,Origin:'https://untrusted.example'},body:form});
+        assert.equal(rejected.status, 403);
+        const uploaded = await fetch(base + path, {method:'POST',headers:{Cookie:cookie,Origin:base},body:form});
+        assert.equal(uploaded.status, 201);
+        const refreshed = await (await fetch(base + '/api/ai-chat/history', {headers:{Cookie:cookie}})).json();
+        const attachment = refreshed.messages.at(-1).attachments[0];
+        assert.equal(attachment.name, 'sample.csv');
+        const downloaded = await fetch(base + path + '/' + attachment.id, {headers:{Cookie:cookie}});
+        assert.equal(downloaded.status, 200);
+        assert.equal(await downloaded.text(), 'name,revenue\nExample,42');
+        assert.equal((await fetch(base + path + '/' + attachment.id)).status, 401);
       } finally {
+        await db.query('DELETE FROM ai_chat_attachments WHERE message_id IN (SELECT id FROM ai_chat_messages WHERE session_id=$1)',[sessionId]);
         await db.query('DELETE FROM ai_chat_messages WHERE session_id=$1',[sessionId]);
         await db.query('DELETE FROM ai_chat_sessions WHERE id=$1',[sessionId]);
       }

@@ -4,6 +4,7 @@ type MessageBase = {
   role: 'user' | 'assistant';
   createdAt: string | null;
   turnStatus: 'pending' | 'completed' | 'failed' | null;
+  attachments?: { id: string; name: string; size: number }[];
 };
 
 type DeferredContent = { title: string | null };
