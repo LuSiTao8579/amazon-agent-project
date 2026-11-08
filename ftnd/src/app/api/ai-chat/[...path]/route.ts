@@ -26,7 +26,9 @@ async function boundedBody(request: Request, limit: number): Promise<Uint8Array<
 }
 function target(path: string[], method: string) {
   if (path.length === 1 && path[0] === 'sessions' && method === 'POST') return 'sessions';
+  if (path.length === 1 && path[0] === 'sessions' && method === 'GET') return 'list';
   if (path[0] !== 'sessions' || !uuid.test(path[1] ?? '')) return null;
+  if (path.length === 2 && method === 'DELETE') return 'delete';
   if (path.length === 3 && method === 'POST' && ['turns','attachments'].includes(path[2])) return path[2];
   if (path.length === 4 && path[2] === 'attachments' && uuid.test(path[3]) && method === 'GET') return 'download';
   return null;
@@ -38,7 +40,7 @@ async function handle(request: Request, context: Context) {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return json({ message: '请先登录' }, 401);
   const contentType = request.headers.get('content-type') ?? '';
-  if (request.method === 'POST') {
+  if (request.method === 'POST' || request.method === 'DELETE') {
     if (kind === 'attachments') {
       const origin = new URL(process.env.APP_ORIGIN ?? 'http://127.0.0.1:3000').origin;
       if (request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site')
@@ -59,11 +61,17 @@ async function handle(request: Request, context: Context) {
       if (!(file instanceof File) || [...form.keys()].length !== 1 || file.size < 1 || file.size > maxFile)
         return json({ message: '请选择不超过 5 MB 的非空文件' }, 400);
       const forward = new FormData(); forward.append('file', file, file.name); body = forward;
-    } else if (request.method === 'POST') {
+    } else if (request.method === 'POST' || request.method === 'DELETE') {
       const bytes = await boundedBody(request, 32768);
       body = new TextDecoder().decode(bytes); headers['Content-Type'] = 'application/json';
     }
-    const response = await fetch(new URL('/ai-agent/' + path.join('/'), base), {
+    const url = new URL('/ai-agent/' + path.join('/'), base);
+    if (kind === 'list') {
+      const page = new URL(request.url).searchParams.get('page') ?? '1';
+      if (!/^[1-9][0-9]{0,5}$/.test(page)) return json({ message: '页码无效' }, 400);
+      url.searchParams.set('page', page); url.searchParams.set('pageSize', '20');
+    }
+    const response = await fetch(url, {
       method: request.method, headers, body, cache: 'no-store', redirect: 'error',
       signal: AbortSignal.timeout(kind === 'turns' ? 120000 : 15000),
     });
@@ -78,6 +86,14 @@ async function handle(request: Request, context: Context) {
       message: response.status < 500 ? errorMessage(data, '操作失败') : '服务暂时不可用，请稍后重试',
       ...(isRecord(data) && data.status === 'failed' ? { status: 'failed' } : {}),
     }, response.status);
+    if (kind === 'list' && isRecord(data) && Array.isArray(data.items) && typeof data.hasMore === 'boolean') {
+      const items = data.items.map((item: unknown) => {
+        if (!isRecord(item) || typeof item.id !== 'string' || !uuid.test(item.id) || typeof item.title !== 'string') throw new Error('invalid session');
+        return { id: item.id, title: item.title, updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : null };
+      });
+      return json({ items, hasMore: data.hasMore });
+    }
+    if (kind === 'delete' && isRecord(data) && data.deleted === true) return json({ deleted: true });
     if (kind === 'sessions' && isRecord(data) && typeof data.id === 'string' && uuid.test(data.id) && typeof data.title === 'string')
       return json({ id: data.id, title: data.title }, response.status);
     if (kind === 'turns' && isRecord(data) && data.status === 'completed') return json({ status: 'completed' }, response.status);
@@ -88,4 +104,4 @@ async function handle(request: Request, context: Context) {
     return json({ message: '连接后端失败或响应异常，请稍后重试' }, 502);
   }
 }
-export { handle as GET, handle as POST };
+export { handle as GET, handle as POST, handle as DELETE };

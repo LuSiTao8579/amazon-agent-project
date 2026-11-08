@@ -149,6 +149,35 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         await db.query('DELETE FROM ai_chat_sessions WHERE id=$1',[sessionId]);
       }
     });
+    await t.test('session list, selection and soft deletion go through the authenticated proxy', async () => {
+      assert.equal((await fetch(base + '/api/ai-chat/sessions')).status, 401);
+      const made = await db.query("INSERT INTO ai_chat_sessions(user_id,title) SELECT $1, '集成测试会话 ' || n FROM generate_series(1,21) n RETURNING id", [id]);
+      const ids = made.rows.map(row => row.id);
+      try {
+        const listed = await fetch(base + '/api/ai-chat/sessions?page=1', {headers:{Cookie:cookie}});
+        assert.equal(listed.status, 200);
+        const list = await listed.json();
+        assert.equal(list.items.length, 20);
+        assert.equal(list.hasMore, true);
+        assert.equal('userId' in list.items[0], false);
+        const second = await (await fetch(base + '/api/ai-chat/sessions?page=2', {headers:{Cookie:cookie}})).json();
+        assert.equal(second.items.length, 1);
+        const selected = await fetch(base + '/api/ai-chat/history?sessionId=' + ids[0], {headers:{Cookie:cookie}});
+        assert.equal(selected.status, 200);
+        assert.equal((await selected.json()).session.id, ids[0]);
+        assert.equal((await fetch(base + '/api/ai-chat/history?sessionId=invalid', {headers:{Cookie:cookie}})).status, 400);
+        const path = '/api/ai-chat/sessions/' + ids[0];
+        const rejected = await fetch(base + path, {method:'DELETE',headers:{Cookie:cookie,Origin:'https://untrusted.example','Content-Type':'application/json'},body:'{}'});
+        assert.equal(rejected.status, 403);
+        const deleted = await fetch(base + path, {method:'DELETE',headers:{Cookie:cookie,Origin:base,'Content-Type':'application/json'},body:'{}'});
+        assert.equal(deleted.status, 200);
+        assert.equal((await fetch(base + '/api/ai-chat/history?sessionId=' + ids[0], {headers:{Cookie:cookie}})).status, 404);
+        assert.ok((await db.query('SELECT deleted_at FROM ai_chat_sessions WHERE id=$1',[ids[0]])).rows[0].deleted_at);
+        assert.equal((await fetch(base + '/api/ai-chat/history?sessionId=' + ids[1], {headers:{Cookie:cookie}})).status, 200);
+      } finally {
+        await db.query('DELETE FROM ai_chat_sessions WHERE id=ANY($1::uuid[])',[ids]);
+      }
+    });
     await t.test('cookie restores identity and renders shared navigation across all workspace pages', async () => {
       assert.ok(cookie, 'login must succeed before checking session');
       const result = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie } });

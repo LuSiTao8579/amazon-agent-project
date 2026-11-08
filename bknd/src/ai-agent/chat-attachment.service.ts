@@ -37,7 +37,7 @@ export class ChatAttachmentService {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const owner = await client.query('UPDATE ai_chat_sessions SET updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id', [sessionId, userId]);
+      const owner = await client.query('UPDATE ai_chat_sessions SET updated_at=now() WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING id', [sessionId, userId]);
       if (!owner.rowCount) throw new NotFoundException('会话不存在');
       const message = await client.query<{id:string}>(`INSERT INTO ai_chat_messages(session_id,role,message_type,content)
         VALUES($1,'user','text',jsonb_build_object('text','附件已保存；当前不会自动交给模型分析。')) RETURNING id`, [sessionId]);
@@ -54,7 +54,7 @@ export class ChatAttachmentService {
     const { rows } = await this.pool.query<{original_name:string; file_data:Buffer|null}>(`
       SELECT a.original_name,a.file_data FROM ai_chat_attachments a
       JOIN ai_chat_messages m ON m.id=a.message_id JOIN ai_chat_sessions s ON s.id=m.session_id
-      WHERE s.user_id=$1 AND s.id=$2 AND a.id=$3`, [userId, sessionId, attachmentId]);
+      WHERE s.user_id=$1 AND s.id=$2 AND s.deleted_at IS NULL AND a.id=$3`, [userId, sessionId, attachmentId]);
     if (!rows[0]?.file_data) throw new NotFoundException('附件不存在');
     return rows[0];
   }

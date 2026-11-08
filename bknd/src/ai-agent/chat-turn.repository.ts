@@ -16,11 +16,14 @@ export class ChatTurnRepository {
     const client = await this.pool.connect();
     let locked = false;
     try {
-      const owner = await client.query('SELECT 1 FROM ai_chat_sessions WHERE id=$1 AND user_id=$2',[sessionId,userId]);
+      const owner = await client.query('SELECT 1 FROM ai_chat_sessions WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[sessionId,userId]);
       if (!owner.rowCount) throw new NotFoundException('会话不存在');
       const result = await client.query<{locked:boolean}>('SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',[sessionId]);
       locked = result.rows[0].locked;
       if (!locked) throw new ConflictException('此会话正在生成回复，请稍后重试');
+      // 获取锁后重新检查，避免会话在初次检查与加锁之间被删除。
+      const stillOwned = await client.query('SELECT 1 FROM ai_chat_sessions WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [sessionId,userId]);
+      if (!stillOwned.rowCount) throw new NotFoundException('会话不存在');
       // 上一个进程意外退出后连接锁会释放，遗留pending不代表还在运行。
       await client.query("UPDATE ai_chat_turns SET status='failed', error_code='interrupted' WHERE session_id=$1 AND status='pending'",[sessionId]);
       return await work(client);
@@ -44,7 +47,7 @@ export class ChatTurnRepository {
   async beginTurn(client:pg.PoolClient, userId:string, sessionId:string, requestId:string, text:string) {
     await client.query('BEGIN');
     try {
-      const owner=await client.query('UPDATE ai_chat_sessions SET updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id',[sessionId,userId]);
+      const owner=await client.query('UPDATE ai_chat_sessions SET updated_at=now() WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING id',[sessionId,userId]);
       if (!owner.rowCount) throw new NotFoundException('会话不存在');
       const user=await client.query<ChatMessageEntity>(`INSERT INTO ai_chat_messages(session_id,role,message_type,content)
         VALUES ($1,'user','text',jsonb_build_object('text',$2::text)) RETURNING ${MESSAGE}`,[sessionId,text]);

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Inject, Param, ParseUUIDPipe, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Inject, Param, ParseUUIDPipe, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
@@ -38,6 +38,21 @@ export class AiAgentController {
   @ApiOkResponse({ type: ChatSessionsPageResponseDto })
   list(@Req() request: AuthenticatedRequest, @Query(dtoPipe(ChatPageDto)) paging: ChatPageDto) {
     return this.chats.listSessions(request.user.id, paging);
+  }
+
+  @Get(':id')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: '获取当前用户的指定会话' })
+  @ApiOkResponse({ type: ChatSessionResponseDto })
+  getSession(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.chats.getSession(request.user.id, id);
+  }
+
+  @Delete(':id')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: '软删除当前用户的会话，保留数据库记录' })
+  deleteSession(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.chats.deleteSession(request.user.id, id);
   }
 
   @Get(':id/messages')

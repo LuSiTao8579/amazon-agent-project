@@ -136,4 +136,36 @@ describe('AI会话 API (真实 PostgreSQL)', () => {
     expect(download.body).toEqual(contents);
   });
 
+  it('软删除仅影响所属会话，保留消息和附件并拒绝后续访问', async () => {
+    const server = app.getHttpServer();
+    const id = sessionIds[0];
+    const path = `/ai-agent/sessions/${id}`;
+    const before = await pool.query('SELECT COUNT(*)::int AS n FROM ai_chat_messages WHERE session_id=$1', [id]);
+    const attachment = await pool.query<{id:string}>(`SELECT a.id FROM ai_chat_attachments a JOIN ai_chat_messages m ON m.id=a.message_id WHERE m.session_id=$1 LIMIT 1`, [id]);
+    expect(attachment.rowCount).toBe(1);
+    await request(server).delete(path).expect(401);
+    await request(server).delete(path).auth(secondToken, {type:'bearer'}).expect(404);
+    await request(server).get(path).auth(secondToken, {type:'bearer'}).expect(404);
+    const lock = await pool.connect();
+    try {
+      await lock.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [id]);
+      await request(server).delete(path).auth(firstToken, {type:'bearer'}).expect(409);
+    } finally { await lock.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [id]); lock.release(); }
+    await request(server).delete(path).auth(firstToken, {type:'bearer'}).expect(200, {deleted:true});
+    await request(server).delete(path).auth(firstToken, {type:'bearer'}).expect(404);
+    await request(server).get(path).auth(firstToken, {type:'bearer'}).expect(404);
+    await request(server).get(`${path}/messages`).auth(firstToken, {type:'bearer'}).expect(404);
+    await request(server).post(`${path}/messages`).auth(firstToken, {type:'bearer'}).send({text:'test'}).expect(404);
+    await request(server).post(`${path}/turns`).auth(firstToken, {type:'bearer'}).send({requestId:randomUUID(),text:'test'}).expect(404);
+    await request(server).post(`${path}/attachments`).auth(firstToken, {type:'bearer'}).attach('file', Buffer.from('hi'), 'test.txt').expect(404);
+    await request(server).get(`${path}/attachments/${attachment.rows[0].id}`).auth(firstToken, {type:'bearer'}).expect(404);
+    const list = await request(server).get('/ai-agent/sessions').auth(firstToken, {type:'bearer'}).expect(200);
+    expect(list.body.items.some((item:{id:string}) => item.id === id)).toBe(false);
+    const after = await pool.query('SELECT COUNT(*)::int AS n FROM ai_chat_messages WHERE session_id=$1', [id]);
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+    expect((await pool.query('SELECT deleted_at FROM ai_chat_sessions WHERE id=$1', [id])).rows[0].deleted_at).not.toBeNull();
+    expect((await pool.query('SELECT 1 FROM ai_chat_attachments WHERE id=$1', [attachment.rows[0].id])).rowCount).toBe(1);
+    await request(server).get(`/ai-agent/sessions/${sessionIds[1]}`).auth(firstToken, {type:'bearer'}).expect(200);
+  });
+
 });

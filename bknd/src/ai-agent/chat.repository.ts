@@ -7,7 +7,7 @@ import type { ChatMessageEntity, ChatMessageType, ChatRole } from './entities/ch
 const SESSION_COLUMNS = 'id, user_id AS "userId", title, created_at AS "createdAt", updated_at AS "updatedAt"';
 const MESSAGE_COLUMNS = 'id, session_id AS "sessionId", position, role, message_type AS "messageType", content, created_at AS "createdAt"';
 
-/** 本步只实现数据访问，后续Controller必须传入经过JWT验证的用户ID。 */
+/** 数据访问始终使用经过 JWT 验证的用户 ID 和未删除条件。 */
 @Injectable()
 export class ChatRepository {
   constructor(@Inject(PG_POOL) private readonly pool: pg.Pool) {}
@@ -20,14 +20,19 @@ export class ChatRepository {
 
   async listSessions(userId: string, limit = 101, offset = 0): Promise<ChatSessionEntity[]> {
     const { rows } = await this.pool.query<ChatSessionEntity>(
-      `SELECT ${SESSION_COLUMNS} FROM ai_chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC, id LIMIT $2 OFFSET $3`, [userId, limit, offset]);
+      `SELECT ${SESSION_COLUMNS} FROM ai_chat_sessions WHERE user_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC, id LIMIT $2 OFFSET $3`, [userId, limit, offset]);
     return rows;
   }
 
   async getSession(userId: string, sessionId: string): Promise<ChatSessionEntity | null> {
     const { rows } = await this.pool.query<ChatSessionEntity>(
-      `SELECT ${SESSION_COLUMNS} FROM ai_chat_sessions WHERE id = $1 AND user_id = $2`, [sessionId, userId]);
+      `SELECT ${SESSION_COLUMNS} FROM ai_chat_sessions WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, [sessionId, userId]);
     return rows[0] ?? null;
+  }
+
+  async softDelete(client: pg.PoolClient, userId: string, sessionId: string): Promise<boolean> {
+    const result = await client.query('UPDATE ai_chat_sessions SET deleted_at=now() WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [sessionId, userId]);
+    return result.rowCount === 1;
   }
 
   async addMessage(userId: string, sessionId: string, role: ChatRole, messageType: ChatMessageType,
@@ -37,7 +42,7 @@ export class ChatRepository {
     const { rows } = await this.pool.query<ChatMessageEntity>(`
       WITH owned AS (
         UPDATE ai_chat_sessions SET updated_at = now()
-        WHERE id = $1 AND user_id = $2 RETURNING id
+        WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id
       )
       INSERT INTO ai_chat_messages(session_id, role, message_type, content)
       SELECT id, $3, $4, $5::jsonb FROM owned RETURNING ${MESSAGE_COLUMNS}`,
@@ -55,7 +60,7 @@ export class ChatRepository {
           FROM ai_chat_attachments a WHERE a.message_id=m.id), '[]'::json) AS attachments
       FROM ai_chat_messages m JOIN ai_chat_sessions s ON s.id = m.session_id
       LEFT JOIN ai_chat_turns t ON t.user_message_id = m.id
-      WHERE s.id = $1 AND s.user_id = $2 ORDER BY m.position LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset]);
+      WHERE s.id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL ORDER BY m.position LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset]);
     return rows;
   }
 }
