@@ -49,8 +49,10 @@ export class ChatRepository {
     // 读取同样带user_id条件，不能只凭sessionId访问别人的内容。
     const { rows } = await this.pool.query<ChatMessageEntity>(`
       SELECT m.id, m.session_id AS "sessionId", m.position, m.role,
-        m.message_type AS "messageType", m.content, m.created_at AS "createdAt"
+        m.message_type AS "messageType", m.content, m.created_at AS "createdAt",
+        t.id AS "turnId", t.status AS "turnStatus", t.error_code AS "errorCode"
       FROM ai_chat_messages m JOIN ai_chat_sessions s ON s.id = m.session_id
+      LEFT JOIN ai_chat_turns t ON t.user_message_id = m.id
       WHERE s.id = $1 AND s.user_id = $2 ORDER BY m.position LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset]);
     return rows;
   }

@@ -54,6 +54,9 @@ export class ChatMessageResponseDto {
   @ApiProperty({ type: String, enum: ['text', 'table', 'chart', 'report', 'confirmation'] }) messageType: string;
   @ApiProperty({ type: 'object', additionalProperties: true, example: { text: '你好' } }) content: Record<string, unknown>;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt: Date;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) turnId?: string | null;
+  @ApiPropertyOptional({ type: String, enum: ['pending', 'completed', 'failed'], nullable: true }) turnStatus?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) errorCode?: string | null;
 }
 
 export class ChatSessionsPageResponseDto {

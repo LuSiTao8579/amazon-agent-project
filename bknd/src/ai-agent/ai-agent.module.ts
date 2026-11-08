@@ -5,10 +5,12 @@ import { AiAgentController } from './ai-agent.controller.js';
 import { AiAgentService } from './ai-agent.service.js';
 import { ChatRepository } from './chat.repository.js';
 import { ModelService } from './providers/model.service.js';
+import { ChatTurnRepository } from './chat-turn.repository.js';
+import { ChatTurnService } from './chat-turn.service.js';
 
 @Module({
   imports: [AuthModule, UsersModule],
   controllers: [AiAgentController],
-  providers: [AiAgentService, ChatRepository, ModelService],
+  providers: [AiAgentService, ChatRepository, ModelService, ChatTurnRepository, ChatTurnService],
 })
 export class AiAgentModule {}

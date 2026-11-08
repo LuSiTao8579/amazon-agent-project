@@ -5,6 +5,8 @@ import { dtoPipe } from '../common/list.dto.js';
 import { JwtAuthGuard } from '../jwt-auth.guard.js';
 import type { PublicUser } from '../users/user.types.js';
 import { AiAgentService } from './ai-agent.service.js';
+import { ChatTurnService } from './chat-turn.service.js';
+import { CreateChatTurnDto, ChatTurnResponseDto } from './chat-turn.dto.js';
 import { ChatMessageResponseDto, ChatMessagesPageResponseDto, ChatPageDto, ChatSessionResponseDto, ChatSessionsPageResponseDto, CreateChatMessageDto, CreateChatSessionDto } from './ai-agent.dto.js';
 
 type AuthenticatedRequest = Request & { user: PublicUser };
@@ -15,7 +17,8 @@ type AuthenticatedRequest = Request & { user: PublicUser };
 @UseGuards(JwtAuthGuard)
 @Controller('ai-agent/sessions')
 export class AiAgentController {
-  constructor(@Inject(AiAgentService) private readonly chats: AiAgentService) {}
+  constructor(@Inject(AiAgentService) private readonly chats: AiAgentService,
+    @Inject(ChatTurnService) private readonly turns: ChatTurnService) {}
 
   @Post()
   @Header('Cache-Control', 'no-store')
@@ -53,5 +56,16 @@ export class AiAgentController {
   createMessage(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string,
     @Body(dtoPipe(CreateChatMessageDto)) input: CreateChatMessageDto) {
     return this.chats.createMessage(request.user.id, id, input);
+  }
+
+  @Post(':id/turns')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: '发送一轮对话并返回模型回复；重复请求编号不会重复生成' })
+  @ApiBody({ type: CreateChatTurnDto })
+  @ApiCreatedResponse({ type: ChatTurnResponseDto })
+  @ApiNotFoundResponse({ description: '会话不存在或不属于当前用户' })
+  sendTurn(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string,
+    @Body(dtoPipe(CreateChatTurnDto)) input: CreateChatTurnDto) {
+    return this.turns.send(request.user.id, id, input);
   }
 }
