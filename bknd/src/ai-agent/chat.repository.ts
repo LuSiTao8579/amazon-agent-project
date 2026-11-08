@@ -18,9 +18,9 @@ export class ChatRepository {
     return rows[0];
   }
 
-  async listSessions(userId: string): Promise<ChatSessionEntity[]> {
+  async listSessions(userId: string, limit = 101, offset = 0): Promise<ChatSessionEntity[]> {
     const { rows } = await this.pool.query<ChatSessionEntity>(
-      `SELECT ${SESSION_COLUMNS} FROM ai_chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC, id`, [userId]);
+      `SELECT ${SESSION_COLUMNS} FROM ai_chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC, id LIMIT $2 OFFSET $3`, [userId, limit, offset]);
     return rows;
   }
 
@@ -45,13 +45,13 @@ export class ChatRepository {
     return rows[0] ?? null;
   }
 
-  async listMessages(userId: string, sessionId: string): Promise<ChatMessageEntity[]> {
+  async listMessages(userId: string, sessionId: string, limit = 101, offset = 0): Promise<ChatMessageEntity[]> {
     // 读取同样带user_id条件，不能只凭sessionId访问别人的内容。
     const { rows } = await this.pool.query<ChatMessageEntity>(`
       SELECT m.id, m.session_id AS "sessionId", m.position, m.role,
         m.message_type AS "messageType", m.content, m.created_at AS "createdAt"
       FROM ai_chat_messages m JOIN ai_chat_sessions s ON s.id = m.session_id
-      WHERE s.id = $1 AND s.user_id = $2 ORDER BY m.position`, [sessionId, userId]);
+      WHERE s.id = $1 AND s.user_id = $2 ORDER BY m.position LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset]);
     return rows;
   }
 }

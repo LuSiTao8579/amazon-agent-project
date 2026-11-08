@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { UserManagementModule } from './users/user-management.module.js';
 import { CompaniesModule } from './companies/companies.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { AiAgentModule } from './ai-agent/ai-agent.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
     UserManagementModule,
     CompaniesModule,
     DashboardModule,
+    AiAgentModule,
   ],
   controllers: [AppController, EnvironmentController],
   providers: [AppService],
