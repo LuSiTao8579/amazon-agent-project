@@ -8,6 +8,7 @@ import {
 import { isActiveWorkspacePath, workspaceNavItems } from '@/config/routes';
 import type { PublicUser } from '@/lib/auth-contract';
 import LogoutButton from './logout-button';
+import { ChatLauncher } from '@/features/ai-chat';
 
 export default function WorkspaceShell({
   user,
@@ -88,6 +89,7 @@ export default function WorkspaceShell({
       <Container maxWidth="lg" component="main" sx={{ py: { xs: 4, md: 6 } }}>
         {children}
       </Container>
+      <ChatLauncher />
     </Box>
   );
 }

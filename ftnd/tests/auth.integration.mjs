@@ -113,6 +113,26 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       if (counts.rows[0].n) assert.equal(dashboard.yearlyGrowth.at(-1).cumulativeCompanies, counts.rows[0].n);
       assert.equal((await fetch(base + '/api/manage/dashboard', {method:'POST',headers:{Cookie:cookie,Origin:base,'Content-Type':'application/json'},body:'{}'})).status,404);
     });
+    await t.test('chat history proxy checks login and returns this user’s saved messages', async () => {
+      assert.equal((await fetch(base + '/api/ai-chat/history')).status, 401);
+      const created = await db.query("INSERT INTO ai_chat_sessions(user_id,title) VALUES($1,$2) RETURNING id",[id,'集成测试会话']);
+      const sessionId = created.rows[0].id;
+      try {
+        await db.query("INSERT INTO ai_chat_messages(session_id,role,content) VALUES ($1,'user',$2::jsonb),($1,'assistant',$3::jsonb)",
+          [sessionId,JSON.stringify({text:'测试提问'}),JSON.stringify({text:'测试回答'})]);
+        const result = await fetch(base + '/api/ai-chat/history', {headers:{Cookie:cookie}});
+        assert.equal(result.status, 200);
+        assert.equal(result.headers.get('cache-control'), 'no-store');
+        const body = await result.json();
+        assert.equal(body.session.id, sessionId);
+        assert.deepEqual(body.messages.map(m => [m.role,m.text]), [['user','测试提问'],['assistant','测试回答']]);
+        assert.equal(body.hasMore, false);
+        assert.equal(JSON.stringify(body).includes(cookieName), false);
+      } finally {
+        await db.query('DELETE FROM ai_chat_messages WHERE session_id=$1',[sessionId]);
+        await db.query('DELETE FROM ai_chat_sessions WHERE id=$1',[sessionId]);
+      }
+    });
     await t.test('cookie restores identity and renders shared navigation across all four workspace pages', async () => {
       assert.ok(cookie, 'login must succeed before checking session');
       const result = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie } });
