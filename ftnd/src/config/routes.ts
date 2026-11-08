@@ -8,6 +8,7 @@ export const routes = {
   company: '/company',
   order: '/order',
   user: '/user',
+  agentTasks: '/agent-tasks',
 } as const;
 
 export const workspaceSections = {
@@ -97,6 +98,18 @@ export const workspaceSections = {
         title: '团队成员与权限配置',
         summary: '后续按业务需求扩展多成员协作、角色分配与访问控制策略。',
       },
+    ],
+  },
+  agentTasks: {
+    key: 'agentTasks',
+    title: 'Agent Tasks',
+    subtitle: '任务进度',
+    href: routes.agentTasks,
+    description: '查看 Agent 任务进度页面的模拟示例。',
+    placeholders: [
+      { title: '任务名称', summary: '用于识别示例任务。' },
+      { title: '任务状态', summary: '使用模拟状态展示页面效果。' },
+      { title: '任务进度', summary: '使用模拟百分比展示页面效果。' },
     ],
   },
 } as const;

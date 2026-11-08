@@ -51,7 +51,7 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
       assert.equal((await post('/api/auth/signup', { email, password, role: 'admin' })).status, 400);
     });
     await t.test('all workspace pages require authentication', async () => {
-      for (const path of ['/dashboard', '/company', '/order', '/user']) {
+      for (const path of ['/dashboard', '/company', '/order', '/user', '/agent-tasks']) {
         const result = await fetch(base + path, { redirect: 'manual' });
         assert.equal(result.status, 307);
         assert.equal(new URL(result.headers.get('location'), base).pathname, '/login');
@@ -149,7 +149,7 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         await db.query('DELETE FROM ai_chat_sessions WHERE id=$1',[sessionId]);
       }
     });
-    await t.test('cookie restores identity and renders shared navigation across all four workspace pages', async () => {
+    await t.test('cookie restores identity and renders shared navigation across all workspace pages', async () => {
       assert.ok(cookie, 'login must succeed before checking session');
       const result = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie } });
       assert.equal(result.status, 200);
@@ -161,6 +161,7 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         ['/company', 'Company', '供应链公司'],
         ['/order', 'Order', '订单追踪'],
         ['/user', 'User', '用户与账户'],
+        ['/agent-tasks', 'Agent Tasks', '任务进度'],
       ];
       for (const [path, title, subtitle] of expectedPages) {
         const page = await fetch(base + path, { headers: { Cookie: cookie } });
@@ -168,6 +169,12 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         const html = await page.text();
         assert.match(html, escapedEmail);
         assert.match(html, /aria-label="工作台导航"/);
+        assert.match(html, /href="\/agent-tasks"/);
+        if (path === '/agent-tasks') {
+          assert.match(html, /模拟数据/);
+          assert.match(html, /示例任务 A/);
+          assert.match(html, /Agent 任务进度模拟数据/);
+        }
         if (path === '/user') assert.match(html, /用户管理仅对管理员开放/);
         else if (path === '/company') assert.match(html, /公司表格/);
         else {
