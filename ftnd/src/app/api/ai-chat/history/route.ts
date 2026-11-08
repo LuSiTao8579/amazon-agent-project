@@ -1,6 +1,8 @@
 import { cookies } from 'next/headers';
 import { json, SESSION_COOKIE } from '@/lib/auth-server';
 import { isRecord } from '@/lib/auth-contract';
+import { normalizeMessage } from '@/features/ai-chat/normalize-message';
+import type { ChatMessage } from '@/features/ai-chat/types';
 
 // 仅供当前登录用户读取最近会话；Token只留在服务端，返回白名单字段。
 export async function GET() {
@@ -25,7 +27,7 @@ export async function GET() {
       !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(session.id) ||
       typeof session.title !== 'string') throw new Error('会话格式错误');
 
-    const messages: { id: string; role: string; text: string; turnStatus: string | null }[] = [];
+    const messages: ChatMessage[] = [];
     let hasMore = true;
     // 防止一次请求无界读取；长会话保留在数据库中，后续分页功能可完整加载。
     for (let page = 1; page <= 10 && hasMore; page++) {
@@ -34,12 +36,7 @@ export async function GET() {
       if (!isRecord(response.data) || !Array.isArray(response.data.items) ||
           typeof response.data.hasMore !== 'boolean') throw new Error('消息响应格式错误');
       for (const row of response.data.items as unknown[]) {
-        if (!isRecord(row) || typeof row.id !== 'string' || !['user', 'assistant'].includes(String(row.role)))
-          throw new Error('消息格式错误');
-        const text = row.messageType === 'text' && isRecord(row.content) && typeof row.content.text === 'string'
-          ? row.content.text : '此类型的消息暂不可显示';
-        messages.push({ id: row.id, role: String(row.role), text,
-          turnStatus: typeof row.turnStatus === 'string' ? row.turnStatus : null });
+        messages.push(normalizeMessage(row));
       }
       hasMore = response.data.hasMore;
     }

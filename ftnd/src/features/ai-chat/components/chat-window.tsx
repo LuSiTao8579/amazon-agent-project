@@ -6,6 +6,7 @@ import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import type { RecentHistory } from '../types';
+import MessageList from './message-list';
 
 type Props = { onClose: () => void };
 
@@ -57,15 +58,7 @@ export default function ChatWindow({ onClose }: Props) {
           </Stack> :
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">最近会话：{history.session.title}</Typography>
-            {history.messages.map(message => <Box key={message.id} sx={{ alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-              bgcolor: message.role === 'user' ? 'primary.main' : 'background.paper', color: message.role === 'user' ? 'primary.contrastText' : 'text.primary',
-              borderRadius: 2, px: 2, py: 1.5, maxWidth: '88%', overflowWrap: 'anywhere' }}>
-              <Typography variant="caption">{message.role === 'user' ? '我' : 'AI 助手'}</Typography>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{message.text}</Typography>
-              {message.turnStatus === 'failed' && <Typography variant="caption">回复未完成</Typography>}
-              {message.turnStatus === 'pending' && <Typography variant="caption">回复处理中</Typography>}
-            </Box>)}
-            {history.hasMore && <Alert severity="info">当前显示前 1000 条消息，更多历史将在后续支持。</Alert>}
+            <MessageList messages={history.messages} hasMore={history.hasMore} />
           </Stack>}
     </Box>
     <Typography variant="caption" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>消息输入功能正在准备中</Typography>

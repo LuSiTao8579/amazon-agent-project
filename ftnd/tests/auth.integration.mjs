@@ -125,7 +125,7 @@ test('real Next → Nest → PostgreSQL authentication flow', async (t) => {
         assert.equal(result.headers.get('cache-control'), 'no-store');
         const body = await result.json();
         assert.equal(body.session.id, sessionId);
-        assert.deepEqual(body.messages.map(m => [m.role,m.text]), [['user','测试提问'],['assistant','测试回答']]);
+        assert.deepEqual(body.messages.map(m => [m.role,m.type,m.content.text]), [['user','text','测试提问'],['assistant','text','测试回答']]);
         assert.equal(body.hasMore, false);
         assert.equal(JSON.stringify(body).includes(cookieName), false);
       } finally {

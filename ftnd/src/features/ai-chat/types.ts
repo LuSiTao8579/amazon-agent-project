@@ -1,12 +1,23 @@
-/** 第6步仅用于展示最近会话的已保存文本；后续步骤扩展完整消息类型。 */
-export type HistoryMessage = {
+/** 每种消息用 type 区分，新增类型时由渲染器明确处理。 */
+type MessageBase = {
   id: string;
   role: 'user' | 'assistant';
-  text: string;
-  turnStatus: string | null;
+  createdAt: string | null;
+  turnStatus: 'pending' | 'completed' | 'failed' | null;
 };
+
+type DeferredContent = { title: string | null };
+export type ChatMessage = MessageBase & (
+  | { type: 'text'; content: { text: string } }
+  | { type: 'table'; content: DeferredContent }
+  | { type: 'chart'; content: DeferredContent }
+  | { type: 'report'; content: DeferredContent }
+  | { type: 'confirmation'; content: DeferredContent }
+  | { type: 'unsupported'; content: { reason: string } }
+);
+export type TextMessage = Extract<ChatMessage, { type: 'text' }>;
 export type RecentHistory = {
   session: { id: string; title: string } | null;
-  messages: HistoryMessage[];
+  messages: ChatMessage[];
   hasMore: boolean;
 };
