@@ -80,11 +80,32 @@ describe('AI Redis 缓存服务', () => {
     expect(updatedTtl).toBeGreaterThanOrEqual(44);
   });
 
-  it('任务状态必须指定 TTL，过期由 Redis 自动处理', async () => {
-    await expect(cache.set(task, 'queued')).rejects.toThrow(RangeError);
-    await cache.set(task, { status: 'queued' }, 1);
-    expect(await redis.get(`ai:task_state:${userId}:${id}`)).toBe('{"status":"queued"}');
-    await vi.waitFor(async () => expect(await cache.get(task)).toBeUndefined(), { timeout: 3000 });
+  it('任务快照使用配置的 TTL，覆盖写入时可指定更短的有效期', async () => {
+    const configured = new AiCacheService(new ConfigService({ REDIS_URL: url, AI_TASK_STATE_TTL_SECONDS: '60' }));
+    const name = `ai:task_state:${userId}:${id}`;
+    try {
+      await configured.onModuleInit();
+      await configured.set(task, { status: 'queued' });
+      const ttl = await redis.ttl(name);
+      expect(ttl).toBeGreaterThanOrEqual(59);
+      expect(ttl).toBeLessThanOrEqual(60);
+      await expect(configured.set(task, null, 0)).rejects.toThrow(RangeError);
+      expect(await redis.get(name)).toBe('{"status":"queued"}');
+      await configured.set(task, { status: 'running' }, 1);
+      expect(await redis.get(name)).toBe('{"status":"running"}');
+      await vi.waitFor(async () => expect(await redis.exists(name)).toBe(0), { timeout: 3000 });
+      expect(await configured.get(task)).toBeUndefined();
+    } finally { configured.onApplicationShutdown(); }
+  });
+
+  it('任务 TTL 配置必须为正整数秒，未配置时写入需要显式 TTL', async () => {
+    for (const value of ['0', '-1', '0.5', 'abc']) {
+      expect(() => new AiCacheService(new ConfigService({ AI_TASK_STATE_TTL_SECONDS: value }))).toThrow('AI_TASK_STATE_TTL_SECONDS');
+    }
+    const emptyConfig = new ConfigService();
+    vi.spyOn(emptyConfig, 'get').mockReturnValue(undefined);
+    const unconfigured = new AiCacheService(emptyConfig);
+    await expect(unconfigured.set(task, 'queued')).rejects.toThrow(RangeError);
   });
 
   it('拒绝无效输入和预留类别，损坏 JSON 可按未命中处理', async () => {

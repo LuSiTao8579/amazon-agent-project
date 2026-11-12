@@ -9,6 +9,7 @@ import { AI_DATA_SOURCE } from '../src/ai/ai.constants.js';
 import { AiSessionService } from '../src/ai/services/ai-session.service.js';
 import { AiMemoryService } from '../src/ai/services/ai-memory.service.js';
 import { AiTaskService } from '../src/ai/services/ai-task.service.js';
+import { AiTaskStateStore } from '../src/ai/cache/ai-task-state.store.js';
 import { AiAuditService } from '../src/ai/services/ai-audit.service.js';
 import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.entity.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -65,6 +66,38 @@ describe('AI Service 数据访问与隔离 (真实 PostgreSQL)', () => {
         await pool.query('DELETE FROM users WHERE id=ANY($1::uuid[])', [ids]);
       }
     } finally { await moduleRef?.close(); }
+  });
+
+  it('临时快照只允许任务所有者读写和清理，按任务隔离并保留持久记录', async () => {
+    const store = moduleRef.get(AiTaskStateStore);
+    const first = await tasks.create(firstUser, { name: '有快照的任务' });
+    const second = await tasks.create(firstUser, { name: '独立快照' });
+    const snapshot = { step: 'collect', cursor: 2, items: ['a', 'b'] };
+    try {
+      expect(await store.read(firstUser, first.id)).toBeUndefined();
+      await store.write(firstUser, first.id, snapshot, 30);
+      expect(await store.read(firstUser, second.id)).toBeUndefined();
+      await store.write(firstUser, second.id, null, 30);
+      await expect(store.read(secondUser, first.id)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(store.write(secondUser, first.id, null, 30)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(store.clear(secondUser, first.id)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(store.read(firstUser, randomUUID())).rejects.toBeInstanceOf(NotFoundException);
+      await expect(store.read('', first.id)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(await store.read(firstUser, first.id)).toEqual(snapshot);
+      expect(await store.clear(firstUser, first.id)).toBe(true);
+      expect(await store.clear(firstUser, first.id)).toBe(false);
+      expect(await store.read(firstUser, first.id)).toBeUndefined();
+      expect(await store.read(firstUser, second.id)).toBeNull();
+      await store.write(firstUser, second.id, { cursor: 3 }, 1);
+      expect(await store.read(firstUser, second.id)).toEqual({ cursor: 3 });
+      await vi.waitFor(async () => expect(await store.read(firstUser, second.id)).toBeUndefined(), { timeout: 3000 });
+      expect(await tasks.get(firstUser, first.id)).toEqual(first);
+    } finally {
+      await store.clear(firstUser, first.id);
+      await store.clear(firstUser, second.id);
+      await tasks.remove(firstUser, first.id);
+      await tasks.remove(firstUser, second.id);
+    }
   });
 
   it('会话创建、旧会话兼容、分页、状态筛选和用户隔离', async () => {

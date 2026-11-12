@@ -23,7 +23,8 @@ const defaultTtlSeconds = { session: 7200, chat: 600, taskState: undefined };
 
 export function cacheTtlSeconds(kind: AiCacheKey['kind'], override = defaultTtlSeconds[kind]): number {
   if (typeof override !== 'number' || !Number.isSafeInteger(override) || override <= 0) {
-    throw new RangeError('AI 缓存 TTL 必须是正整数秒，任务状态需要显式指定 TTL');
+    if (kind === 'taskState') throw new RangeError('请通过 ttlSeconds 或 AI_TASK_STATE_TTL_SECONDS 为任务状态指定正整数秒');
+    throw new RangeError('AI 缓存 TTL 必须是正整数秒');
   }
   return override;
 }

@@ -31,6 +31,7 @@ function encodeValue(value: AiCacheValue): string {
 export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
   private readonly client;
   private readonly sessionTtlSeconds: number;
+  private readonly taskStateTtlSeconds?: number;
   private readonly chatPolicies;
   private readonly logger = new Logger(AiCacheService.name);
   private outageLogged = false;
@@ -38,6 +39,8 @@ export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
   constructor(@Inject(ConfigService) config: ConfigService) {
     const ttl = config.get<string>('AI_SESSION_CACHE_TTL_SECONDS');
     this.sessionTtlSeconds = cacheTtlSeconds('session', ttl === undefined ? undefined : Number(ttl));
+    const taskTtl = config.get<string>('AI_TASK_STATE_TTL_SECONDS');
+    if (taskTtl !== undefined) this.taskStateTtlSeconds = cacheTtlSeconds('taskState', Number(taskTtl));
     this.chatPolicies = parseChatCachePolicies(config.get<string>('AI_CHAT_CACHE_POLICIES'));
     try {
       const url = new URL(config.get<string>('REDIS_URL') ?? localRedisUrl);
@@ -85,7 +88,7 @@ export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
     if (override !== undefined) return cacheTtlSeconds(key.kind, override);
     if (key.kind === 'session') return this.sessionTtlSeconds;
     if (key.kind === 'chat') return cacheTtlSeconds('chat', this.chatPolicies.get(key.dimension)?.ttlSeconds);
-    return cacheTtlSeconds(key.kind);
+    return cacheTtlSeconds('taskState', this.taskStateTtlSeconds);
   }
 
   private async storageKey(key: AiCacheKey, invalidating = false): Promise<string | undefined> {

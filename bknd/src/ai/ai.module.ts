@@ -9,6 +9,7 @@ import { AiAgentModule } from '../ai-agent/ai-agent.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AI_DATA_SOURCE } from './ai.constants.js';
 import { AiCacheModule } from './cache/ai-cache.module.js';
+import { AiTaskStateStore } from './cache/ai-task-state.store.js';
 import { AiSessionService } from './services/ai-session.service.js';
 import { AiMemoryService } from './services/ai-memory.service.js';
 import { AiTaskService } from './services/ai-task.service.js';
@@ -48,7 +49,7 @@ export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecor
     TypeOrmModule.forFeature(AI_ENTITIES, AI_DATA_SOURCE),
   ],
   controllers: [AiSessionController, AiMemoryController, AiTaskController, AiAuditController, AiAdminAuditController],
-  providers: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService],
-  exports: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService, AiCacheModule],
+  providers: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService, AiTaskStateStore],
+  exports: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService, AiTaskStateStore, AiCacheModule],
 })
 export class AiModule {}
