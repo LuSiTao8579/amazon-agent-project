@@ -7,11 +7,11 @@
 | 类别 | Redis Key | 默认有效期 |
 | --- | --- | --- |
 | 会话 | `ai:session:<userId>:<sessionId>` | 7200 秒 |
-| 聊天结果 | `ai:chat_cache:<userId>:<业务维度>:<问句的 SHA-256 摘要>` | 600 秒 |
+| 聊天结果 | `ai:chat_cache:<userId>:<业务维度>:<问句与条件的摘要>:<维度版本>` | 默认 600 秒 |
 | 模型调用 | `ai:llm_cache:` | 本周只预留前缀 |
 | 任务临时状态 | `ai:task_state:<userId>:<taskId>` | 写入时由调用方传入 |
 
-调用方使用认证上下文的用户 ID，并先按业务 Service 的规则确认资源归属。UUID 统一为小写，业务维度进行 URL 编码，摘要取原始问句的 UTF-8 字节。同一用户在不同业务维度查询相同问句，会得到独立的 Key。
+调用方使用认证上下文的用户 ID，并先按业务 Service 的规则确认资源归属。UUID 统一为小写，业务维度进行 URL 编码，聊天查询摘要包含原始问句与业务条件。同一用户在不同业务维度查询相同问句，会得到独立的 Key。
 
 ## 在 AI Service 中调用
 
@@ -26,7 +26,7 @@ const removed = await this.cache.invalidate(key);
 
 `set` 用一条 Redis `SET … EX` 同时写值和有效期。第三个参数可覆盖有效期，单位为正整数秒。`get` 返回 JSON 值，未命中、过期或 JSON 损坏时返回 `undefined`，缓存中的 JSON `null` 会原样返回。`invalidate` 只删除指定 Key，首次删除已有记录返回 `true`，再次删除返回 `false`。
 
-最近十轮的选择、PostgreSQL 回源、聊天业务开关和任务执行器接入属于后续步骤。本步提供这些功能将使用的缓存操作。
+最近十轮的选择和 PostgreSQL 回源见[第九步](ai-foundation-step-9.md)。聊天结果的业务条件、开关、有效期及失效入口见[第十步](ai-foundation-step-10.md)。
 
 ## 启动与验证
 

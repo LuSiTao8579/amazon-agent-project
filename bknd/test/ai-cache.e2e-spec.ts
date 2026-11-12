@@ -4,7 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { createClient } from '@redis/client';
 import { AiCacheService } from '../src/ai/cache/ai-cache.service.js';
-import { AI_CACHE_PREFIX, buildAiCacheKey, type AiCacheKey } from '../src/ai/cache/ai-cache-key.js';
+import { AI_CACHE_PREFIX, buildAiCacheKey, chatDimensionVersionKey, type AiCacheKey } from '../src/ai/cache/ai-cache-key.js';
 
 describe('AI Redis 缓存服务', () => {
   let module: TestingModule;
@@ -14,7 +14,8 @@ describe('AI Redis 缓存服务', () => {
   const userId = randomUUID();
   const id = randomUUID();
   const session = { kind: 'session', userId, sessionId: id } as const;
-  const chat = { kind: 'chat', userId, dimension: 'orders:today', question: '今天有多少订单？' } as const;
+  const chat = { kind: 'chat', userId, dimension: 'orders:today:' + id, question: '今天有多少订单？' } as const;
+  const otherDimension = 'orders%3Atoday:' + id;
   const task = { kind: 'taskState', userId, taskId: id } as const;
 
   beforeAll(async () => {
@@ -32,7 +33,10 @@ describe('AI Redis 缓存服务', () => {
   });
 
   afterEach(async () => {
-    if (redis?.isReady) await redis.del([session, chat, task].map(buildAiCacheKey));
+    if (redis?.isReady) {
+      await cache.invalidate(chat);
+      await redis.del([buildAiCacheKey(session), buildAiCacheKey(task), chatDimensionVersionKey(chat.dimension), chatDimensionVersionKey(otherDimension)]);
+    }
   });
 
   afterAll(async () => {
@@ -60,14 +64,15 @@ describe('AI Redis 缓存服务', () => {
 
   it('聊天按用户、业务维度和问句区分，默认十分钟，允许显式覆盖 TTL', async () => {
     await cache.set(chat, null);
-    const name = buildAiCacheKey(chat);
-    expect(name).toMatch(new RegExp(`^ai:chat_cache:${userId}:orders%3Atoday:[a-f0-9]{64}$`));
+    const base = buildAiCacheKey(chat);
+    expect(base).toMatch(new RegExp(`^ai:chat_cache:${userId}:orders%3Atoday%3A${id}:[a-f0-9]{64}$`));
+    const name = base + ':' + await redis.get(chatDimensionVersionKey(chat.dimension));
     const ttl = await redis.ttl(name);
     expect(ttl).toBeGreaterThanOrEqual(599);
     expect(ttl).toBeLessThanOrEqual(600);
     expect(await cache.get(chat)).toBeNull();
     expect(await cache.get({ ...chat, userId: randomUUID() })).toBeUndefined();
-    expect(await cache.get({ ...chat, dimension: 'orders%3Atoday' })).toBeUndefined();
+    expect(await cache.get({ ...chat, dimension: otherDimension })).toBeUndefined();
     expect(await cache.get({ ...chat, question: '昨天有多少订单？' })).toBeUndefined();
     await cache.set(chat, '更新结果', 45);
     const updatedTtl = await redis.ttl(name);
