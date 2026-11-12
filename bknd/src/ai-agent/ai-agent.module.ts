@@ -13,5 +13,6 @@ import { ChatAttachmentService } from './chat-attachment.service.js';
   imports: [AuthModule, UsersModule],
   controllers: [AiAgentController],
   providers: [AiAgentService, ChatRepository, ModelService, ChatTurnRepository, ChatTurnService, ChatAttachmentService],
+  exports: [AiAgentService],
 })
 export class AiAgentModule {}

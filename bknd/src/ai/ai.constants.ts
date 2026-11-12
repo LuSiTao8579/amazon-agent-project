@@ -1,3 +1,5 @@
+export const AI_DATA_SOURCE = 'ai';
+
 /** 与 0007_ai_foundation.sql 的 CHECK 约束保持一致。 */
 export const AI_SESSION_STATUSES = ['active', 'closed'] as const;
 export const AI_TASK_STATUSES = ['pending', 'running', 'completed', 'failed', 'cancelled'] as const;

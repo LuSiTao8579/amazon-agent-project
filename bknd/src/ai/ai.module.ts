@@ -1,16 +1,25 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AiAgentModule } from '../ai-agent/ai-agent.module.js';
+import { UsersModule } from '../users/users.module.js';
+import { AI_DATA_SOURCE } from './ai.constants.js';
+import { AiSessionService } from './services/ai-session.service.js';
+import { AiMemoryService } from './services/ai-memory.service.js';
+import { AiTaskService } from './services/ai-task.service.js';
+import { AiAuditService } from './services/ai-audit.service.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiChatSessionEntity } from './entities/ai-chat-session.entity.js';
 import { AiUserMemoryEntity } from './entities/ai-user-memory.entity.js';
 import { AiTaskRecordEntity } from './entities/ai-task-record.entity.js';
 import { AiOperationAuditEntity } from './entities/ai-operation-audit.entity.js';
 
-export const AI_DATA_SOURCE = 'ai';
+export { AI_DATA_SOURCE } from './ai.constants.js';
 export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecordEntity, AiOperationAuditEntity];
 
 @Module({
   imports: [
+    AiAgentModule,
+    UsersModule,
     TypeOrmModule.forRootAsync({
       name: AI_DATA_SOURCE,
       inject: [ConfigService],
@@ -30,5 +39,7 @@ export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecor
     }),
     TypeOrmModule.forFeature(AI_ENTITIES, AI_DATA_SOURCE),
   ],
+  providers: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService],
+  exports: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService],
 })
 export class AiModule {}
