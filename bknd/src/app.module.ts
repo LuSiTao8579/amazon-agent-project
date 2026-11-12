@@ -9,6 +9,7 @@ import { UserManagementModule } from './users/user-management.module.js';
 import { CompaniesModule } from './companies/companies.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { AiAgentModule } from './ai-agent/ai-agent.module.js';
+import { AiModule } from './ai/ai.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AiAgentModule } from './ai-agent/ai-agent.module.js';
     CompaniesModule,
     DashboardModule,
     AiAgentModule,
+    AiModule,
   ],
   controllers: [AppController, EnvironmentController],
   providers: [AppService],
