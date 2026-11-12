@@ -2,6 +2,7 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager } from 'typeorm';
 import { AiAgentService } from '../../ai-agent/ai-agent.service.js';
+import { AiSessionContextCache } from '../cache/ai-session-context.cache.js';
 import { AI_DATA_SOURCE, type AiSessionStatus } from '../ai.constants.js';
 import type { CreateAiSessionDto, QueryAiSessionDto, UpdateAiSessionDto } from '../dto/ai-session.dto.js';
 import { AiChatSessionEntity } from '../entities/ai-chat-session.entity.js';
@@ -26,6 +27,7 @@ export class AiSessionService {
   constructor(
     @InjectDataSource(AI_DATA_SOURCE) private readonly dataSource: DataSource,
     @Inject(AiAgentService) private readonly chats: AiAgentService,
+    @Inject(AiSessionContextCache) private readonly memory: AiSessionContextCache,
   ) {}
 
   /** 两张会话记录在同一事务内创建，不能留下半条记录。 */
@@ -76,7 +78,7 @@ export class AiSessionService {
     return this.dataSource.transaction(async (manager) => {
       await this.getFrom(manager, userId, id);
       const locks = await manager.query(
-        'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked', [id],
+        'SELECT pg_try_advisory_xact_lock(hashtextextended($1::uuid::text, 0)) AS locked', [id],
       ) as Array<{ locked: boolean }>;
       if (!locks[0].locked) throw new ConflictException('此会话正在生成回复，请稍后重试');
       // 再次按用户检查，避免首次检查与加锁之间会话被软删除。
@@ -95,6 +97,7 @@ export class AiSessionService {
         .execute();
       if (updated.affected !== 1) throw new NotFoundException('会话不存在');
       await manager.query('UPDATE ai_chat_sessions SET updated_at=now() WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [id, userId]);
+      if (input.status === 'closed') await this.memory.clear(userId, id);
       return this.getFrom(manager, userId, id);
     });
   }

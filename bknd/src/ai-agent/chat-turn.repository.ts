@@ -1,8 +1,12 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import pg from 'pg';
 import { PG_POOL } from '../database/database.module.js';
+import type { AiSessionStatus } from '../ai/ai.constants.js';
+import { SESSION_TURN_LIMIT, type SessionTurn } from '../ai/cache/ai-session-context.cache.js';
 import type { ChatMessageEntity } from './entities/chat-message.entity.js';
-import type { ModelMessage, ModelReply } from './providers/chat-model.types.js';
+import type { ModelReply } from './providers/chat-model.types.js';
+
+type SessionHistory = { status: AiSessionStatus; turnIds: string[] };
 
 type TurnRow = { id:string; status:'pending'|'completed'|'failed'; user_message_id:string; assistant_message_id:string|null; error_code:string|null; text:string };
 const MESSAGE = 'id, session_id AS "sessionId", position, role, message_type AS "messageType", content, created_at AS "createdAt"';
@@ -12,25 +16,35 @@ const MESSAGE = 'id, session_id AS "sessionId", position, role, message_type AS 
 export class ChatTurnRepository {
   constructor(@Inject(PG_POOL) private readonly pool:pg.Pool) {}
 
-  async withSessionLock<T>(userId:string, sessionId:string, work:(client:pg.PoolClient)=>Promise<T>):Promise<T> {
+  async withSessionLock<T>(userId:string, sessionId:string, work:(client:pg.PoolClient, history:SessionHistory)=>Promise<T>):Promise<T> {
     const client = await this.pool.connect();
     let locked = false;
     try {
       const owner = await client.query('SELECT 1 FROM ai_chat_sessions WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[sessionId,userId]);
       if (!owner.rowCount) throw new NotFoundException('会话不存在');
-      const result = await client.query<{locked:boolean}>('SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',[sessionId]);
+      const result = await client.query<{locked:boolean}>('SELECT pg_try_advisory_lock(hashtextextended($1::uuid::text, 0)) AS locked',[sessionId]);
       locked = result.rows[0].locked;
       if (!locked) throw new ConflictException('此会话正在生成回复，请稍后重试');
       // 获取锁后重新检查，避免会话在初次检查与加锁之间被删除。
-      const stillOwned = await client.query('SELECT 1 FROM ai_chat_sessions WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [sessionId,userId]);
+      // 同次查询取最近已提交的回合 ID。缓存命中时无需从 PostgreSQL 加载消息正文。
+      const stillOwned = await client.query<SessionHistory>(`
+        SELECT COALESCE(a.status, 'active') AS status, ARRAY(
+          SELECT t.id FROM ai_chat_messages u JOIN ai_chat_turns t ON t.user_message_id=u.id
+          WHERE u.session_id=s.id AND t.session_id=s.id AND t.status='completed'
+          ORDER BY u.position DESC LIMIT $3
+        ) AS "turnIds"
+        FROM ai_chat_sessions s LEFT JOIN ai_chat_session a ON a.id=s.id
+        WHERE s.id=$1 AND s.user_id=$2 AND s.deleted_at IS NULL`, [sessionId,userId,SESSION_TURN_LIMIT]);
       if (!stillOwned.rowCount) throw new NotFoundException('会话不存在');
       // 上一个进程意外退出后连接锁会释放，遗留pending不代表还在运行。
       await client.query("UPDATE ai_chat_turns SET status='failed', error_code='interrupted' WHERE session_id=$1 AND status='pending'",[sessionId]);
-      return await work(client);
+      const history = stillOwned.rows[0];
+      history.turnIds.reverse();
+      return await work(client, history);
     } finally {
       let destroyConnection = false;
       if (locked) {
-        try { await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))',[sessionId]); }
+        try { await client.query('SELECT pg_advisory_unlock(hashtextextended($1::uuid::text, 0))',[sessionId]); }
         catch { destroyConnection = true; }
       }
       client.release(destroyConnection);
@@ -57,24 +71,16 @@ export class ChatTurnRepository {
     } catch(error) {await client.query('ROLLBACK');throw error;}
   }
 
-  async context(client:pg.PoolClient, sessionId:string, text:string):Promise<ModelMessage[]> {
-    // 最近10个已完成回合，不把失败的提问冒充成功上下文；限制字符以控制模型请求大小。
-    const {rows}=await client.query<{user_text:string;assistant_text:string}>(`
-      SELECT u.content->>'text' AS user_text, a.content->>'text' AS assistant_text
-      FROM ai_chat_turns t JOIN ai_chat_messages u ON u.id=t.user_message_id
-      JOIN ai_chat_messages a ON a.id=t.assistant_message_id
-      WHERE t.session_id=$1 AND t.status='completed' ORDER BY u.position DESC LIMIT 10`,[sessionId]);
-    let size=text.length;
-    const chosen: typeof rows=[];
-    for (const row of rows) {
-      if (typeof row.user_text !== 'string' || typeof row.assistant_text !== 'string') continue;
-      if (row.user_text.length > 16000 || row.assistant_text.length > 16000 || size + row.user_text.length + row.assistant_text.length > 32000) break;
-      size += row.user_text.length + row.assistant_text.length;
-      chosen.push(row);
-    }
-    return [...chosen.reverse().flatMap(row=>[
-      {role:'user' as const,content:row.user_text},{role:'assistant' as const,content:row.assistant_text},
-    ]),{role:'user',content:text}];
+  async completedTurns(client: pg.PoolClient, userId: string, sessionId: string, ids: string[]): Promise<SessionTurn[]> {
+    const { rows } = await client.query<SessionTurn>(`
+      SELECT t.id AS "turnId", u.content->>'text' AS "user", a.content->>'text' AS assistant
+      FROM ai_chat_turns t JOIN ai_chat_sessions s ON s.id=t.session_id
+      JOIN ai_chat_messages u ON u.id=t.user_message_id AND u.session_id=s.id
+      JOIN ai_chat_messages a ON a.id=t.assistant_message_id AND a.session_id=s.id
+      WHERE s.id=$1 AND s.user_id=$2 AND s.deleted_at IS NULL AND t.status='completed'
+        AND t.id=ANY($3::uuid[]) AND u.content->>'text' IS NOT NULL AND a.content->>'text' IS NOT NULL
+      ORDER BY u.position`, [sessionId, userId, ids]);
+    return rows;
   }
 
   async complete(client:pg.PoolClient, turnId:string, sessionId:string, reply:ModelReply) {

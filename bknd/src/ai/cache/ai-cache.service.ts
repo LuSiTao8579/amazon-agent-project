@@ -12,10 +12,13 @@ const timeoutMs = 2000;
 @Injectable()
 export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
   private readonly client;
+  private readonly sessionTtlSeconds: number;
   private readonly logger = new Logger(AiCacheService.name);
   private outageLogged = false;
 
   constructor(@Inject(ConfigService) config: ConfigService) {
+    const ttl = config.get<string>('AI_SESSION_CACHE_TTL_SECONDS');
+    this.sessionTtlSeconds = cacheTtlSeconds('session', ttl === undefined ? undefined : Number(ttl));
     try {
       const url = new URL(config.get<string>('REDIS_URL') ?? localRedisUrl);
       if (!url.hostname || !/^\/(?:\d+)?$/.test(url.pathname || '/')) throw new TypeError();
@@ -59,9 +62,10 @@ export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  async set(key: AiCacheKey, value: AiCacheValue, ttlSeconds?: number): Promise<void> {
+  async set(key: AiCacheKey, value: AiCacheValue,
+    ttlSeconds = key.kind === 'session' ? this.sessionTtlSeconds : undefined): Promise<void> {
     const name = buildAiCacheKey(key);
-    const expiration = cacheTtlSeconds(key, ttlSeconds);
+    const expiration = cacheTtlSeconds(key.kind, ttlSeconds);
     const json = JSON.stringify(value, (_field, item: unknown) => {
       if (item === undefined || (typeof item === 'number' && !Number.isFinite(item))) {
         throw new TypeError('AI 缓存值必须是有效 JSON');

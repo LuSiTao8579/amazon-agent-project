@@ -16,7 +16,7 @@ export type AiCacheKey =
 
 const defaultTtlSeconds = { session: 7200, chat: 600, taskState: undefined };
 
-export function cacheTtlSeconds(key: AiCacheKey, override = defaultTtlSeconds[key.kind]): number {
+export function cacheTtlSeconds(kind: AiCacheKey['kind'], override = defaultTtlSeconds[kind]): number {
   if (typeof override !== 'number' || !Number.isSafeInteger(override) || override <= 0) {
     throw new RangeError('AI 缓存 TTL 必须是正整数秒，任务状态需要显式指定 TTL');
   }

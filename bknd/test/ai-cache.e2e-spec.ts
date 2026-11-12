@@ -46,8 +46,9 @@ describe('AI Redis 缓存服务', () => {
     const name = `ai:session:${userId}:${id}`;
     expect(await redis.get(name)).toBe(JSON.stringify(value));
     const ttl = await redis.ttl(name);
-    expect(ttl).toBeGreaterThanOrEqual(7199);
-    expect(ttl).toBeLessThanOrEqual(7200);
+    const configured = Number(module.get(ConfigService).get('AI_SESSION_CACHE_TTL_SECONDS') ?? 7200);
+    expect(ttl).toBeGreaterThanOrEqual(configured - 1);
+    expect(ttl).toBeLessThanOrEqual(configured);
     expect(await cache.get({ ...session, sessionId: id.toUpperCase() })).toEqual(value);
     const other = { ...session, userId: randomUUID() };
     expect(await cache.get(other)).toBeUndefined();
@@ -112,13 +113,18 @@ describe('AI Redis 缓存服务', () => {
   });
 
   it('应用关闭后释放连接，后续操作不能再使用该连接', async () => {
+    const config = new ConfigService({ REDIS_URL: url, AI_SESSION_CACHE_TTL_SECONDS: '60' });
     const separate = await Test.createTestingModule({
-      providers: [AiCacheService, { provide: ConfigService, useValue: new ConfigService({ REDIS_URL: url }) }],
+      providers: [AiCacheService, { provide: ConfigService, useValue: config }],
     }).compile();
     const service = separate.get(AiCacheService);
     try {
       await separate.init();
       expect(await service.get(session)).toBeUndefined();
+      await service.set(session, []);
+      const ttl = await redis.ttl(buildAiCacheKey(session));
+      expect(ttl).toBeLessThanOrEqual(60);
+      expect(ttl).toBeGreaterThanOrEqual(59);
     } finally {
       await separate.close();
     }

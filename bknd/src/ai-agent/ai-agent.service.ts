@@ -1,11 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ChatRepository } from './chat.repository.js';
 import { ChatTurnRepository } from './chat-turn.repository.js';
+import { AiSessionContextCache } from '../ai/cache/ai-session-context.cache.js';
 import type { ChatPageDto, CreateChatMessageDto, CreateChatSessionDto } from './ai-agent.dto.js';
 
 @Injectable()
 export class AiAgentService {
   constructor(@Inject(ChatRepository) private readonly chats: ChatRepository,
+    @Inject(AiSessionContextCache) private readonly memory: AiSessionContextCache,
     @Inject(ChatTurnRepository) private readonly turns: ChatTurnRepository) {}
 
   async createSession(userId: string, input: CreateChatSessionDto) {
@@ -27,6 +29,7 @@ export class AiAgentService {
     // 与生成回复使用相同的会话锁，避免生成过程中删除。
     return this.turns.withSessionLock(userId, sessionId, async client => {
       if (!await this.chats.softDelete(client, userId, sessionId)) throw new NotFoundException('会话不存在');
+      await this.memory.clear(userId, sessionId);
       return { deleted: true };
     });
   }
