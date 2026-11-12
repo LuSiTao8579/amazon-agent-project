@@ -1,6 +1,7 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-export type AiAuditResult = 'success' | 'failure';
+import type { AiAuditResult } from '../ai.constants.js';
+export type { AiAuditResult } from '../ai.constants.js';
 
 /** 审计只追加；禁止更改由后续迁移和服务权限共同保证。 */
 @Entity('ai_operation_audit')

@@ -1,6 +1,7 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-export type AiTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+import type { AiTaskStatus } from '../ai.constants.js';
+export type { AiTaskStatus } from '../ai.constants.js';
 
 @Entity('ai_task_record')
 export class AiTaskRecordEntity {

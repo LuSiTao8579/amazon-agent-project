@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, type QueryRunner } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { AI_DATA_SOURCE, AI_ENTITIES } from '../src/ai/ai.module.js';
+import { AI_AUDIT_RESULTS, AI_SESSION_STATUSES, AI_TASK_STATUSES } from '../src/ai/ai.constants.js';
 import { AiChatSessionEntity } from '../src/ai/entities/ai-chat-session.entity.js';
 import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.entity.js';
 import { AiTaskRecordEntity } from '../src/ai/entities/ai-task-record.entity.js';
@@ -101,6 +102,20 @@ describe('AI 数据表迁移 (真实 PostgreSQL)', () => {
       userId, action: 'read', resourceType: 'session', result: 'success',
     });
     expect(withoutResource.resourceId).toBeNull();
+  });
+
+  it('DTO 使用的状态和结果值均被数据库约束接受', async () => {
+    await runner.query('INSERT INTO ai_chat_session(id) VALUES ($1)', [sessionId]);
+    for (const status of AI_SESSION_STATUSES) {
+      await runner.query('UPDATE ai_chat_session SET status=$1 WHERE id=$2', [status, sessionId]);
+    }
+    for (const status of AI_TASK_STATUSES) {
+      await runner.query('INSERT INTO ai_task_record(user_id,name,status) VALUES ($1,$2,$3)', [userId, '任务', status]);
+    }
+    for (const result of AI_AUDIT_RESULTS) {
+      await runner.query('INSERT INTO ai_operation_audit(user_id,action,resource_type,result) VALUES ($1,$2,$3,$4)',
+        [userId, 'read', 'task', result]);
+    }
   });
 
   it('外键、状态及长度约束拒绝无效数据，禁止删除被引用的用户与会话', async () => {

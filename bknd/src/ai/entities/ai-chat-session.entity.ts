@@ -1,6 +1,7 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
 
-export type AiSessionStatus = 'active' | 'closed';
+import type { AiSessionStatus } from '../ai.constants.js';
+export type { AiSessionStatus } from '../ai.constants.js';
 
 /** ID 与已有 ai_chat_sessions 会话相同；归属通过原会话查验。 */
 @Entity('ai_chat_session')
