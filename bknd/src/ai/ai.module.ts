@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AuthModule } from '../auth/auth.module.js';
+import { AiSessionController } from './controllers/ai-session.controller.js';
+import { AiMemoryController } from './controllers/ai-memory.controller.js';
+import { AiTaskController } from './controllers/ai-task.controller.js';
+import { AiAdminAuditController, AiAuditController } from './controllers/ai-audit.controller.js';
 import { AiAgentModule } from '../ai-agent/ai-agent.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AI_DATA_SOURCE } from './ai.constants.js';
@@ -18,6 +23,7 @@ export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecor
 
 @Module({
   imports: [
+    AuthModule,
     AiAgentModule,
     UsersModule,
     TypeOrmModule.forRootAsync({
@@ -39,6 +45,7 @@ export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecor
     }),
     TypeOrmModule.forFeature(AI_ENTITIES, AI_DATA_SOURCE),
   ],
+  controllers: [AiSessionController, AiMemoryController, AiTaskController, AiAuditController, AiAdminAuditController],
   providers: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService],
   exports: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService],
 })

@@ -15,6 +15,7 @@
 | 更新任务 | `UpdateAiTaskDto` | `name` / `status` 至少提供一项；状态为 `pending`、`running`、`completed`、`failed`、`cancelled` |
 | 查询任务 | `QueryAiTaskDto` | `page`、`pageSize`、可选 `status` |
 | 内部创建审计 | `CreateAiAuditDto` | `action`、`resourceType`、`result` 必填，`resourceId` 可省略、为 null 或 UUID；不接收 `userId` |
+| 用户上报审计（第七步） | `CreateAiAuditReportDto` | 同上；`action` 最长 93 字符，服务端添加 `client.` 标记 |
 | 查询本人审计 | `QueryAiAuditDto` | 分页、可选 `result` 和时间范围 `from` / `to` |
 | 管理员查询审计 | `AdminQueryAiAuditDto` | 在本人查询字段外允许可选 UUID `userId` 筛选 |
 | 按 ID 查询 / 删除 | `AiIdParamsDto` | 必填 UUID `id`；仅校验格式 |
@@ -28,7 +29,7 @@
 - 在后续 Controller 中，对完整请求对象使用 `aiDtoPipe(DtoClass)`，例如 `@Body(aiDtoPipe(CreateAiMemoryDto))` 或 `@Query(aiDtoPipe(QueryAiTaskDto))`。按 ID 校验应使用 `@Param(aiDtoPipe(AiIdParamsDto))` 接收包含 `id` 的对象，而不是把对象管道直接用于 `@Param('id')` 字符串。
 - 该管道沿用项目的转换、白名单、拒绝未知字段和安全错误配置，并额外拒绝数组、null 和标量。它仅做参数校验，不负责鉴权。
 - 普通用户 DTO 不接受 `userId`：Service 必须从 JWT 验证后的上下文获取用户身份，并在所有查询与写操作中强制限制本人。`AdminQueryAiAuditDto` 只能在 JWT 和管理员守卫之后使用；无 `userId` 也必须由权限控制决定可见范围。
-- `CreateAiAuditDto` 仅供可信服务端内部使用，审计操作者从可信上下文另行传入；不要开放任意客户端创建审计的接口。审计不提供更新或删除 DTO。
+- `CreateAiAuditDto` 仍供服务端内部使用。第七步另以 `CreateAiAuditReportDto` 接收已登录用户的本人上报，由服务端添加 `client.` 前缀并从 JWT 获取操作者；上报内容未经服务端核实。审计不提供更新或删除 DTO。
 - 审计 `from` / `to` 及任务/会话状态只是参数约定，后续 Service 需要真正实现筛选。DTO 校验不能替代数据库约束、资源归属检查、任务状态流转规则或审计权限。
 
 ## 验证

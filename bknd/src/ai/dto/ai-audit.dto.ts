@@ -1,10 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsIn, IsISO8601, IsString, IsUUID, Matches, MaxLength, NotContains, Validate,
   ValidateIf, ValidatorConstraint, type ValidationArguments, type ValidatorConstraintInterface,
 } from 'class-validator';
-import { AI_AUDIT_RESULTS, type AiAuditResult } from '../ai.constants.js';
+import { AI_AUDIT_CLIENT_ACTION_MAX_LENGTH, AI_AUDIT_RESULTS, type AiAuditResult } from '../ai.constants.js';
 import { AiPaginationDto } from './ai-common.dto.js';
 
 /** 仅供服务端内部创建审计记录；操作者从可信上下文另行获取。 */
@@ -33,6 +33,17 @@ export class CreateAiAuditDto {
   @ApiProperty({ enum: AI_AUDIT_RESULTS })
   @IsIn(AI_AUDIT_RESULTS, { message: 'result 必须是 success 或 failure' })
   result!: AiAuditResult;
+}
+
+/** 用户上报的动作统一加 client. 前缀，不冒充服务端自动生成的审计。 */
+export class CreateAiAuditReportDto extends OmitType(CreateAiAuditDto, ['action'] as const) {
+  @ApiProperty({ type: String, maxLength: AI_AUDIT_CLIENT_ACTION_MAX_LENGTH, example: 'task.open', description: '服务端添加 client. 前缀，标记为用户上报' })
+  @Transform(({ value }: { value: unknown }) => typeof value === 'string' ? value.trim() : value)
+  @IsString({ message: 'action 必须是字符串' })
+  @Matches(/\S/u, { message: 'action 不能为空白' })
+  @NotContains('\u0000', { message: 'action 不能包含空字符' })
+  @MaxLength(AI_AUDIT_CLIENT_ACTION_MAX_LENGTH, { message: 'action 不能超过 93 个字符' })
+  action!: string;
 }
 
 // 必须是带时区的完整时间，避免按服务器时区解释不明确的日期。

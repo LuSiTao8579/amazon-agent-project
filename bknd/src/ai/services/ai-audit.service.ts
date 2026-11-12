@@ -15,7 +15,7 @@ export class AiAuditService {
     @Inject(UsersService) private readonly users: UsersService,
   ) {}
 
-  /** 仅供可信服务端调用；userId 必须来自认证上下文。 */
+  /** userId 必须来自认证上下文；客户端上报由调用方添加 client. 前缀。 */
   async create(userId: string, input: CreateAiAuditDto): Promise<AiOperationAuditEntity> {
     requireAiUserId(userId);
     return this.records.save(this.records.create({
