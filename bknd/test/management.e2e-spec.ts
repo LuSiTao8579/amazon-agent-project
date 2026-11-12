@@ -56,6 +56,27 @@ describe('用户与公司管理 API', () => {
     await request(server).post('/users/bulk-delete').auth(adminToken, { type: 'bearer' }).send({ ids: [id] }).expect(200);
     await request(server).get(`/users/${id}`).auth(adminToken, { type: 'bearer' }).expect(404);
   });
+  it('AI 记录引用用户时单删和批量删除均返回 409，整批用户和记录保留', async () => {
+    const server = app.getHttpServer();
+    const member = await request(server).get('/auth/me').auth(memberToken, { type: 'bearer' }).expect(200);
+    const memberId = member.body.id;
+    const independent = await request(server).post('/users').auth(adminToken, { type: 'bearer' })
+      .send({ email: `bulk-${prefix}@example.test`, password: 'A valid test password!', name: 'Batch fixture', role: 'Member', status: 'active' }).expect(201);
+    emails.push(independent.body.email);
+    const memory = await request(server).post('/ai/memories').auth(memberToken, { type: 'bearer' })
+      .send({ content: '保留测试记录' }).expect(201);
+    try {
+      await request(server).delete(`/users/${memberId}`).auth(adminToken, { type: 'bearer' }).expect(409);
+      await request(server).post('/users/bulk-delete').auth(adminToken, { type: 'bearer' })
+        .send({ ids: [independent.body.id, memberId] }).expect(409);
+      for (const id of [independent.body.id, memberId]) {
+        await request(server).get(`/users/${id}`).auth(adminToken, { type: 'bearer' }).expect(200);
+      }
+      await request(server).get(`/ai/memories/${memory.body.id}`).auth(memberToken, { type: 'bearer' }).expect(200);
+    } finally {
+      await pool.query('DELETE FROM ai_user_memory WHERE id=$1', [memory.body.id]);
+    }
+  });
   it('Dashboard需要登录且汇总与数据库一致', async () => {
     const server = app.getHttpServer();
     await request(server).get('/dashboard').expect(401);

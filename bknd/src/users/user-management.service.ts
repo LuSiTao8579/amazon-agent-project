@@ -76,6 +76,9 @@ export class UserManagementService {
       return { deleted: result.rowCount };
     } catch (error) {
       await client.query('ROLLBACK');
+      if (error instanceof pg.DatabaseError && error.code === '23503') {
+        throw new ConflictException('待删除用户仍有关联记录，无法删除');
+      }
       throw error;
     } finally {
       client.release();

@@ -11,8 +11,6 @@ import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.en
 import { AiTaskRecordEntity } from '../src/ai/entities/ai-task-record.entity.js';
 import { AiUserMemoryEntity } from '../src/ai/entities/ai-user-memory.entity.js';
 
-type Row = Record<string, unknown>;
-
 describe('AI 数据表迁移 (真实 PostgreSQL)', () => {
   let moduleRef: TestingModule;
   let dataSource: DataSource;
@@ -179,13 +177,20 @@ describe('AI 数据表迁移 (真实 PostgreSQL)', () => {
     expect(triggers.some((row) => /BEFORE.*TRUNCATE/i.test(row.definition))).toBe(true);
   });
 
-  it('常用分页和按状态筛选的索引存在', async () => {
-    const rows = await runner.query(`SELECT indexname FROM pg_indexes WHERE schemaname=current_schema()
-      AND tablename = ANY($1::text[])`, [['ai_user_memory', 'ai_task_record', 'ai_operation_audit']]) as Row[];
-    const names = rows.map((row) => row.indexname);
-    expect(names).toEqual(expect.arrayContaining([
-      'ai_user_memory_user_updated_idx', 'ai_task_record_user_created_idx',
-      'ai_task_record_user_status_created_idx', 'ai_operation_audit_user_created_idx', 'ai_operation_audit_created_idx',
-    ]));
+  it('分页索引可用，所属表、列顺序与排序方向符合查询设计', async () => {
+    const rows = await runner.query(`
+      SELECT t.relname AS resource, i.relname AS name, pg_get_indexdef(i.oid) AS definition
+      FROM pg_index x JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_class t ON t.oid=x.indrelid
+      WHERE t.relnamespace=current_schema()::regnamespace AND x.indisvalid AND x.indisready
+        AND t.relname=ANY($1::text[])`, [['ai_user_memory', 'ai_task_record', 'ai_operation_audit']]);
+    for (const [resource, name, keys] of [
+      ['ai_user_memory', 'ai_user_memory_user_updated_idx', 'user_id, updated_at DESC, id'],
+      ['ai_task_record', 'ai_task_record_user_created_idx', 'user_id, created_at DESC, id'],
+      ['ai_task_record', 'ai_task_record_user_status_created_idx', 'user_id, status, created_at DESC, id'],
+      ['ai_operation_audit', 'ai_operation_audit_user_created_idx', 'user_id, created_at DESC, id'],
+      ['ai_operation_audit', 'ai_operation_audit_created_idx', 'created_at DESC, id'],
+    ]) {
+      expect(rows).toContainEqual({ resource, name, definition: expect.stringContaining(` USING btree (${keys})`) });
+    }
   });
 });

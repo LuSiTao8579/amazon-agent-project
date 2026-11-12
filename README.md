@@ -73,6 +73,7 @@ npm run test:integration
 
 ## 文档索引
 
+- [AI Agent 第一周交付与验收](docs/ai-foundation-step-12.md) · 后端配置、数据库升级、JWT 接口试用、Redis Key 和一键回归命令。
 - 环境与工具说明：
   - [本地数据库环境](docs/local-databases.md)
   - [NestJS 后端环境](docs/backend-environment.md)

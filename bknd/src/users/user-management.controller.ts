@@ -43,12 +43,14 @@ export class UserManagementController {
 
   @Delete(':id')
   @Header('Cache-Control', 'no-store')
+  @ApiConflictResponse({ description: '用户仍有关联记录，无法删除' })
   @ApiOperation({ summary: '删除普通用户；管理员账号受保护' })
   remove(@Param('id', new ParseUUIDPipe()) id: string) { return this.users.remove([id]); }
 
   @Post('bulk-delete')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
+  @ApiConflictResponse({ description: '待删除用户仍有关联记录，整批回滚' })
   @ApiOperation({ summary: '批量删除明确选中的用户；全成功或全回滚' })
   @ApiBody({ type: DeleteUsersDto })
   bulkRemove(@Body(dtoPipe(DeleteUsersDto)) input: DeleteUsersDto) { return this.users.remove(input.ids); }
