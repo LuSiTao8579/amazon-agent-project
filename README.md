@@ -21,6 +21,7 @@ docker compose ps
 ```
 
 首次运行请参考 `.env.example` 创建根目录 `.env`（设置 `POSTGRES_PASSWORD`），并在 `bknd/.env`（参考 `bknd/.env.example`）中配置 `JWT_SECRET` 与 `DATABASE_URL`。
+AI 缓存默认连接 Compose 的 `redis://127.0.0.1:16379/0`，使用其他 Redis 实例时在 `bknd/.env` 设置 `REDIS_URL`。
 
 ### 2. 执行数据库迁移并启动 NestJS 后端（端口 3001）
 
@@ -49,7 +50,7 @@ npm run dev
 
 ## 自动化测试与检查命令
 
-### 后端（`bknd/`，需 PostgreSQL 已运行）
+### 后端（`bknd/`，完整 e2e 需要 PostgreSQL 和 Redis）
 
 ```bash
 cd /Users/lusitao/Desktop/amazon-agent-project/bknd

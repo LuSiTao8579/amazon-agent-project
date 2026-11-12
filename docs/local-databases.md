@@ -48,6 +48,6 @@ stop 暂停服务但保留数据。不要随意执行 `docker compose down -v`�
 init.sql 仅在空数据卷首次初始化时执行，不是每次启动都会执行。
 因此业务表（如 users）不写进 init.sql，而是在 bknd 目录执行 `npm run db:migrate` 创建，见 `docs/auth-step-2.md`。
 
-## 后续工作
+## 后端连接
 
-NestJS 已通过 bknd/.env 的 DATABASE_URL 连接 PostgreSQL；Redis 尚未接入应用。
+NestJS 通过 `DATABASE_URL` 连接 PostgreSQL。AI 模块通过 `AiCacheService` 访问 Redis，默认使用本机 Compose 地址，可在 `bknd/.env` 设置 `REDIS_URL`。调用示例和验证命令见[第八步说明](ai-foundation-step-8.md)。

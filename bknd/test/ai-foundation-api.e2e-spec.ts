@@ -46,7 +46,7 @@ describe('AI 基础数据 HTTP API 与 JWT (真实 PostgreSQL)', () => {
 
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(AiAuditService).useValue(auditService).compile();
-    app = fixture.createNestApplication<App>();
+    app = fixture.createNestApplication();
     setupApp(app);
     await app.init();
     pool = app.get(PG_POOL);
