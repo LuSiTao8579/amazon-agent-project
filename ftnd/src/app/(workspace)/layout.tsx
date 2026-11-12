@@ -1,7 +1,7 @@
 import WorkspaceShell from '@/components/workspace-shell';
 import { currentUser } from '@/lib/auth-server';
 
-// Shared workspace layout for /dashboard, /company, /order, and /user.
+// Shared workspace layout for authenticated workspace pages.
 // Individual pages call requireUser() so unauthenticated requests emit a single
 // redirect to /login and client-side tab switches still verify the session.
 export default async function WorkspaceLayout({

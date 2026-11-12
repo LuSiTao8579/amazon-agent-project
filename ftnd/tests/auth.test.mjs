@@ -66,6 +66,7 @@ test('workspace navigation is derived from a single source of truth', () => {
       ['company', 'Company', routes.company],
       ['order', 'Order', routes.order],
       ['user', 'User', routes.user],
+      ['agentTasks', 'Agent Tasks', routes.agentTasks],
     ],
   );
   for (const item of workspaceNavItems) {

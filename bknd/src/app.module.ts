@@ -8,15 +8,17 @@ import { AuthModule } from './auth/auth.module.js';
 import { UserManagementModule } from './users/user-management.module.js';
 import { CompaniesModule } from './companies/companies.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { AiAgentModule } from './ai-agent/ai-agent.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.ai', '.env'] }),
     DatabaseModule,
     AuthModule,
     UserManagementModule,
     CompaniesModule,
     DashboardModule,
+    AiAgentModule,
   ],
   controllers: [AppController, EnvironmentController],
   providers: [AppService],

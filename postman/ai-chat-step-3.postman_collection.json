@@ -1,0 +1,55 @@
+{
+  "info": {
+    "name": "Amazon Agent — AI会话 第3步",
+    "description": "先在已有环境中设置 token。按01至05顺序执行；02会创建真实的本地演示会话，04会写入本地用户消息。此阶段不调用AI模型。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "item": [
+    {
+      "name": "01 — 未登录被拒绝",
+      "request": { "method": "GET", "url": "{{baseUrl}}/ai-agent/sessions", "auth": { "type": "noauth" } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('未登录返回401', () => pm.response.to.have.status(401));"] } }]
+    },
+    {
+      "name": "02 — 创建会话",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/ai-agent/sessions",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"title\":\"Postman 演示会话\"}", "options": { "raw": { "language": "json" } } }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('会话创建成功', () => pm.response.to.have.status(201));",
+        "if (pm.response.code === 201) pm.environment.set('aiChatSessionId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "03 — 列出我的会话",
+      "request": { "method": "GET", "url": "{{baseUrl}}/ai-agent/sessions?page=1&pageSize=20" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('会话列表请求成功', () => pm.response.to.have.status(200));",
+        "pm.test('响应包含会话数组', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+      ] } }]
+    },
+    {
+      "name": "04 — 保存用户文本",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/ai-agent/sessions/{{aiChatSessionId}}/messages",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"text\":\"你好，这是一条Postman测试消息。\"}", "options": { "raw": { "language": "json" } } }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('用户消息已保存', () => pm.response.to.have.status(201));",
+        "pm.test('消息角色是user', () => pm.expect(pm.response.json().role).to.eql('user'));"
+      ] } }]
+    },
+    {
+      "name": "05 — 读取会话历史",
+      "request": { "method": "GET", "url": "{{baseUrl}}/ai-agent/sessions/{{aiChatSessionId}}/messages?page=1&pageSize=20" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('消息列表请求成功', () => pm.response.to.have.status(200));",
+        "pm.test('读到刚刚写入的测试消息', () => pm.expect(pm.response.json().items.some(m => m.content.text === '你好，这是一条Postman测试消息。')).to.eql(true));"
+      ] } }]
+    }
+  ]
+}
