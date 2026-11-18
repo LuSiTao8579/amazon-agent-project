@@ -1,9 +1,13 @@
 import { Alert, Typography } from '@mui/material';
 import type { ChatMessage } from '../types';
+import CompanyTableMessage from './company-table-message';
 import TextMessageView from './text-message';
 
 /** 根据消息类型选择组件；未实现的业务类型只显示说明。 */
 export default function MessageRenderer({ message }: { message: ChatMessage }) {
+  if (message.type === 'table' && message.content.companies) {
+    return <CompanyTableMessage companies={message.content.companies} summary={message.content.summary} />;
+  }
   switch (message.type) {
     case 'tool-error': return <Alert severity="error">{message.content.message}</Alert>;
     case 'text': return <TextMessageView message={message} />;

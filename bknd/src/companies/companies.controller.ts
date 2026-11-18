@@ -18,7 +18,7 @@ export class CompaniesController {
 
   @Get()
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: '查询公司；按名称、多个等级筛选并分页' })
+  @ApiOperation({ summary: '查询公司；按名称、多个等级、国家及城市筛选，排序后分页' })
   list(@Query(dtoPipe(CompanyListDto)) query: CompanyListDto) { return this.companies.list(query); }
 
   @Get(':code')

@@ -1,9 +1,27 @@
-import type { ToolErrorCode } from '../../../../contracts/tool-result.d.ts';
+import type { CompanyRow, ToolErrorCode } from '../../../../contracts/tool-result.d.ts';
 import type { ChatMessage } from './types';
 import { MAX_ATTACHMENT_BYTES } from './upload-policy.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function companyRows(items: unknown[]): CompanyRow[] | null {
+  const rows: CompanyRow[] = [];
+  const codes = new Set<string>();
+  for (const item of items) {
+    if (!isRecord(item)) return null;
+    const { companyCode, companyName, level, country, revenuePerEmployee, city, foundedYear, annualRevenue, employees } = item;
+    if (typeof companyCode !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(companyCode) || codes.has(companyCode) ||
+      typeof companyName !== 'string' || typeof country !== 'string' || typeof city !== 'string' ||
+      typeof level !== 'number' || !Number.isInteger(level) || typeof foundedYear !== 'number' || !Number.isInteger(foundedYear) ||
+      typeof employees !== 'number' || !Number.isSafeInteger(employees) || employees < 0 ||
+      typeof annualRevenue !== 'number' || !Number.isFinite(annualRevenue) ||
+      (revenuePerEmployee !== null && (typeof revenuePerEmployee !== 'number' || !Number.isFinite(revenuePerEmployee)))) return null;
+    codes.add(companyCode);
+    rows.push({ companyCode, companyName, level, country, revenuePerEmployee, city, foundedYear, annualRevenue, employees });
+  }
+  return rows;
 }
 
 const toolErrors: Record<ToolErrorCode, true> = {
@@ -49,6 +67,10 @@ export function normalizeMessage(row: unknown): ChatMessage {
         items.length > pageSize || items.length > total) return invalid;
       const title = tableType === 'users' ? '用户表' : '公司表';
       const summary = total === 0 ? '没有符合条件的记录。' : `共 ${total} 条，第 ${page} 页显示 ${items.length} 条。`;
+      if (tableType === 'companies' && items.length > 0) {
+        const companies = companyRows(items);
+        return companies ? { ...base, type: 'table', content: { title, summary, companies } } : invalid;
+      }
       return { ...base, type: 'table', content: { title, summary } };
     }
     if (resultType === 'chart' && Array.isArray(data.rows)) {

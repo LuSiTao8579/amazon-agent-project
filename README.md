@@ -78,6 +78,7 @@ npm run test:integration
 - [AI Agent 第二周第三步 · 工具返回与排序契约](docs/ai-tools-step-3.md) · 返回结构、页码与排序规则、错误码和联调样例。
 - [AI Agent 第二周第四步 · 工具注册与动态开关](docs/ai-tools-step-4.md) · 工具发现、权限复核和 Redis 配置示例。
 - [AI Agent 第二周第五步 · 工具执行审计](docs/ai-tools-step-5.md) · 审计字段、脱敏策略、可信 IP 和查询方式。
+- [AI Agent 第二周第六步 · 公司基础查询](docs/ai-tools-step-6.md) · 组合筛选、工具与业务 API 对照、聊天折叠表格和人均年营收色阶。
 - [AI Agent 第一周交付与验收](docs/ai-foundation-step-12.md) · 后端配置、数据库升级、JWT 接口试用、Redis Key 和一键回归命令。
 - 环境与工具说明：
   - [本地数据库环境](docs/local-databases.md)

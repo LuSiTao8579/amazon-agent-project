@@ -24,7 +24,7 @@ export class QueryUsersTool extends BaseTool<UserListDto, Table> {
   }
 }
 
-@Tool({ name: 'query_companies', description: '按名称和等级查询公司列表', intent: 'QUERY_DATA', permission: 'companies.read' })
+@Tool({ name: 'query_companies', description: '按公司名关键词、多个等级、国家和城市筛选，排序并分页返回公司及详情', intent: 'QUERY_DATA', permission: 'companies.read' })
 export class QueryCompaniesTool extends BaseTool<CompanyListDto, Table> {
   readonly inputDto = CompanyListDto;
   constructor(@Inject(CompaniesService) private readonly companies: CompaniesService) { super(); }

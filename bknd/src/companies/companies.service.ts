@@ -5,9 +5,10 @@ import { listOrderBy, searchPattern } from '../common/list.dto.js';
 import { COMPANY_SORT_COLUMNS } from './company.dto.js';
 import type { CompanyListDto, CreateCompanyDto, UpdateCompanyDto } from './company.dto.js';
 
+const REVENUE_PER_EMPLOYEE = '(annual_revenue / NULLIF(employees, 0))::float8';
 const COLUMNS = `company_code AS "companyCode", company_name AS "companyName", level, country, city,
   founded_year AS "foundedYear", annual_revenue::float8 AS "annualRevenue", employees,
-  (annual_revenue / NULLIF(employees, 0))::float8 AS "revenuePerEmployee",
+  ${REVENUE_PER_EMPLOYEE} AS "revenuePerEmployee",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 const FIELD_COLUMNS: Record<string, string> = {
   companyName: 'company_name', level: 'level', country: 'country', city: 'city',
@@ -20,13 +21,22 @@ export class CompaniesService {
 
   async list(query: CompanyListDto) {
     const orderBy = listOrderBy(query, COMPANY_SORT_COLUMNS, 'companyCode', 'asc', 'company_code');
-    const args = [searchPattern(query.search), query.levels ?? null];
-    const where = 'company_name ILIKE $1 AND ($2::int[] IS NULL OR level = ANY($2))';
-    const count = await this.pool.query<{ total: number }>(`SELECT count(*)::int AS total FROM companies WHERE ${where}`, args);
-    const { rows } = await this.pool.query(
-      `SELECT ${COLUMNS} FROM companies WHERE ${where} ORDER BY ${orderBy} LIMIT $3 OFFSET $4`,
-      [...args, query.pageSize, (query.page - 1) * query.pageSize]);
-    return { items: rows, total: count.rows[0].total, page: query.page, pageSize: query.pageSize };
+    // 总数和分页使用同一语句的快照；即使页码越界，仍有一行携带真实总数。
+    const { rows } = await this.pool.query(`
+      WITH matched AS NOT MATERIALIZED (
+        SELECT *, ${REVENUE_PER_EMPLOYEE} AS "revenuePerEmployee" FROM companies
+        WHERE company_name ILIKE $1 AND ($2::int[] IS NULL OR level = ANY($2))
+          AND ($3::text IS NULL OR lower(btrim(country)) = lower($3))
+          AND ($4::text IS NULL OR lower(btrim(city)) = lower($4))
+      )
+      SELECT ${COLUMNS}, counts.total
+      FROM (SELECT count(*)::int AS total FROM matched) counts
+      LEFT JOIN (SELECT * FROM matched ORDER BY ${orderBy} LIMIT $5 OFFSET $6) page_rows ON TRUE
+      ORDER BY ${orderBy}`,
+      [searchPattern(query.search), query.levels ?? null, query.country ?? null, query.city ?? null,
+        query.pageSize, (query.page - 1) * query.pageSize]);
+    const items = rows.filter(row => row.companyCode !== null).map(({ total: _total, ...company }) => company);
+    return { items, total: rows[0].total, page: query.page, pageSize: query.pageSize };
   }
 
   async get(code: string) {

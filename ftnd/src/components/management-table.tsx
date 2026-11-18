@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Box, Button, Checkbox, Chip, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material';
+import RevenuePerEmployeeChip from './revenue-per-employee-chip';
 import { errorMessage } from '@/lib/auth-contract';
 
 type Row = Record<string, string | number | boolean | null>;
@@ -99,7 +100,7 @@ export default function ManagementTable({ kind, isAdmin }: { kind: 'users'|'comp
           <TableRow hover>
             <TableCell>{company?<Button aria-label={'展开 '+row.companyName} aria-expanded={expanded.includes(id)} onClick={()=>setExpanded(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id])}>{expanded.includes(id)?'收起':'展开'}</Button>:<Checkbox inputProps={{'aria-label':'选择 '+row.email}} checked={selected.includes(id)} disabled={!!row.isAdmin||busy||loading} onChange={e=>setSelected(v=>e.target.checked?[...v,id]:v.filter(x=>x!==id))}/>}</TableCell>
             {(company?['companyName','level','country']:['name','email','role']).map(key=><TableCell key={key}>{String(row[key]||'未设置')}</TableCell>)}
-            <TableCell>{company?<Chip label={typeof ratio==='number'?ratio.toLocaleString(undefined,{maximumFractionDigits:2}):'不可计算'} sx={{bgcolor:typeof ratio!=='number'?'action.disabledBackground':ratio<100?'#fff3e0':ratio<500?'#e3f2fd':'#e8f5e9'}}/>:<Chip label={row.status==='active'?'启用':'停用'} color={row.status==='active'?'success':'default'}/>}</TableCell>
+            <TableCell>{company?<RevenuePerEmployeeChip value={typeof ratio === 'number' ? ratio : null} />:<Chip label={row.status==='active'?'启用':'停用'} color={row.status==='active'?'success':'default'}/>}</TableCell>
             <TableCell>{isAdmin && (company||!row.isAdmin)?<Stack direction="row"><Button disabled={busy} onClick={()=>open(row)}>编辑</Button><Button color="error" disabled={busy} onClick={()=>setDeleting([id])}>删除</Button></Stack>:<Typography variant="caption">{row.isAdmin?'管理员受保护':'只读'}</Typography>}</TableCell>
           </TableRow>
           {company && <TableRow><TableCell colSpan={6} sx={{py:0}}><Collapse in={expanded.includes(id)} unmountOnExit><Stack spacing={1} sx={{p:2}}>{companyFields.slice(4).map(f=><Typography key={f.key}>{f.label}：{String(row[f.key])}</Typography>)}</Stack></Collapse></TableCell></TableRow>}

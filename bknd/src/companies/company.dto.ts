@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, IntersectionType, PickType, OmitType, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { ListDto } from '../common/list.dto.js';
@@ -63,7 +63,12 @@ export const COMPANY_SORT_COLUMNS = {
   revenuePerEmployee: '"revenuePerEmployee"',
 } as const;
 
-export class CompanyListDto extends ListDto {
+// 查询条件沿用公司资料的地点校验和首尾空格处理；省略字段表示不限地点。
+class CompanyLocationFilter extends PartialType(PickType(CreateCompanyDto, ['country', 'city'] as const), {
+  skipNullProperties: false,
+}) {}
+
+export class CompanyListDto extends IntersectionType(ListDto, CompanyLocationFilter) {
   @ApiPropertyOptional({ enum: Object.keys(COMPANY_SORT_COLUMNS) })
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(Object.keys(COMPANY_SORT_COLUMNS))

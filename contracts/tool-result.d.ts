@@ -1,7 +1,7 @@
 /** JSON 协议。message_type 使用 resultType，消息 content 保存完整 ToolResult。 */
 type Page<Row> = { items: Row[]; total: number; page: number; pageSize: number };
 type UserRow = { name: string; email: string; role: string; status: 'active' | 'inactive' };
-type CompanyRow = {
+export type CompanyRow = {
   companyCode: string; companyName: string; level: number; country: string; revenuePerEmployee: number | null;
   city: string; foundedYear: number; annualRevenue: number; employees: number;
 };

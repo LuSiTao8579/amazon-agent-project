@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { examples } from '../../contracts/tool-result.examples.ts';
+import { revenuePerEmployeeDisplay } from '../src/components/revenue-per-employee.ts';
 import { normalizeMessage } from '../src/features/ai-chat/normalize-message.ts';
 
 const base = { id: '1', role: 'assistant', createdAt: '2026-01-01T00:00:00Z', turnStatus: 'completed' };
@@ -51,4 +52,22 @@ test('零匹配、超出最后一页、工具失败与损坏的结果分别展�
     assert.equal(read(content).content.message, content.message);
   }
   assert.equal(read({ ...examples.empty, data: null }).type, 'unsupported');
+});
+
+test('公司消息保留可展开字段，过滤额外字段，拒绝缺失计算值和重复行标识', () => {
+  const row = examples.companies.data.items[0];
+  const read = items => normalizeMessage({ ...base, messageType: 'table', content: {
+    ...examples.companies, data: { ...examples.companies.data, items, total: items.length },
+  } });
+  const zero = { ...row, companyCode: 'ZERO', employees: 0, revenuePerEmployee: null };
+  assert.deepEqual(read([{ ...row, secret: 'private' }, zero]).content.companies, [row, zero]);
+  assert.equal(read([{ ...row, revenuePerEmployee: undefined }]).type, 'unsupported');
+  assert.equal(read([row, row]).type, 'unsupported');
+});
+test('公司页与聊天使用相同的人均年营收色阶，以原始值判定边界', () => {
+  for (const [value, color] of [[0, '#fff3e0'], [99.999, '#fff3e0'], [100, '#e3f2fd'],
+    [499.999, '#e3f2fd'], [500, '#e8f5e9']]) {
+    assert.equal(revenuePerEmployeeDisplay(value).bgcolor, color);
+  }
+  assert.deepEqual(revenuePerEmployeeDisplay(null), { label: '不可计算', bgcolor: 'action.disabledBackground' });
 });

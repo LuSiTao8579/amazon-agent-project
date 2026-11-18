@@ -1,3 +1,5 @@
+import type { CompanyRow } from '../../../../contracts/tool-result.d.ts';
+
 /** 每种消息用 type 区分，新增类型时由渲染器明确处理。 */
 type MessageBase = {
   id: string;
@@ -10,7 +12,7 @@ type MessageBase = {
 type DeferredContent = { title: string | null; summary?: string };
 export type ChatMessage = MessageBase & (
   | { type: 'text'; content: { text: string } }
-  | { type: 'table'; content: DeferredContent }
+  | { type: 'table'; content: DeferredContent & { companies?: CompanyRow[] } }
   | { type: 'chart'; content: DeferredContent }
   | { type: 'report'; content: DeferredContent }
   | { type: 'confirmation'; content: DeferredContent }
