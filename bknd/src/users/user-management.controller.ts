@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBadRequestResponse, ApiBearerAuth, ApiBody, ApiConflictResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../jwt-auth.guard.js';
+import { JwtAuthGuard, type ToolRequest } from '../jwt-auth.guard.js';
 import { AdminGuard } from '../admin.guard.js';
 import { dtoPipe } from '../common/list.dto.js';
 import { CreateUserDto, DeleteUsersDto, UpdateUserDto, UserListDto } from './user-management.dto.js';
@@ -19,8 +19,10 @@ export class UserManagementController {
 
   @Get()
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: '按姓名、多个岗位搜索用户，服务端分页' })
-  list(@Query(dtoPipe(UserListDto)) query: UserListDto) { return this.users.list(query); }
+  @ApiOperation({ summary: '按姓名、多个岗位和账号状态查询用户，支持排序与分页' })
+  list(@Req() request: ToolRequest, @Query(dtoPipe(UserListDto)) query: UserListDto) {
+    return this.users.list(query, request.toolContext);
+  }
 
   @Get(':id')
   @Header('Cache-Control', 'no-store')

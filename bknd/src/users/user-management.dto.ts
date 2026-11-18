@@ -37,6 +37,11 @@ export class UserListDto extends ListDto {
   @IsIn(Object.keys(USER_SORT_COLUMNS))
   sortBy?: keyof typeof USER_SORT_COLUMNS;
 
+  @ApiPropertyOptional({ enum: USER_STATUSES, description: '按账号状态筛选，省略时包含两种状态' })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(USER_STATUSES)
+  status?: (typeof USER_STATUSES)[number];
+
   @ApiPropertyOptional({ type: String, example: 'Member,Analyst', description: '逗号分隔的岗位，多选采用 OR；和姓名搜索采用 AND' })
   @ValidateIf((_object, value) => value !== undefined)
   @Transform(({ value }: { value: unknown }) => typeof value === 'string' ? value.split(',') : value)

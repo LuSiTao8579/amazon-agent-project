@@ -82,8 +82,8 @@ describe('工具身份与业务参数', () => {
     try {
       await request(app.getHttpServer()).post('/example').auth(token, { type: 'bearer' })
         .set('X-Forwarded-For', '192.0.2.1').send({ roles: 'Analyst,Member' }).expect(201, { code: 'OK', resultType: 'text', data: { text: '匹配用户数为 7。' }, message: '查询成功。' });
-      expect(list).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ roles: ['Analyst', 'Member'], page: 1, pageSize: 10 }));
       const context = execute.mock.calls[0][0];
+      expect(list).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ roles: ['Analyst', 'Member'], page: 1, pageSize: 10 }), context);
       expect(context).toMatchObject({ userId: id, isAdmin: true, ip: expect.stringMatching(/^(::1|(::ffff:)?127\.0\.0\.1)$/) });
       expect(Object.isFrozen(context)).toBe(true);
       await expect(tool.execute({ ...context! }, {})).resolves.toEqual(toolFailure('UNAUTHENTICATED'));

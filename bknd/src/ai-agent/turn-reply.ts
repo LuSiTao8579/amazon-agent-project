@@ -1,5 +1,7 @@
 import type { ToolResult } from '../../../contracts/tool-result.js';
-import type { ChatMessageType } from './entities/chat-message.entity.js';
+import { isIssuedToolContext, type ToolContext } from '../jwt-auth.guard.js';
+import { toolFailure } from '../ai/tools/tool-result.js';
+import { ChatMessageEntity, type ChatMessageType } from './entities/chat-message.entity.js';
 
 export type TurnReply = { messageType: ChatMessageType; content: Record<string, unknown>; summary: string };
 
@@ -19,4 +21,14 @@ function summarize(result: ToolResult): string {
 export function toolTurnReply(result: ToolResult): TurnReply {
   const summary = summarize(result);
   return { messageType: result.resultType, content: { ...result, contextSummary: summary }, summary };
+}
+
+// 历史和 requestId 重放都按本次登录权限交付。旧版快照同样带有 tableType。
+export function visibleMessage(message: ChatMessageEntity, context: ToolContext | undefined): ChatMessageEntity {
+  const data = message.content.data;
+  if (message.role === 'assistant' && message.messageType === 'table' && data && typeof data === 'object' &&
+      'tableType' in data && data.tableType === 'users' && !(isIssuedToolContext(context) && context.isAdmin)) {
+    return Object.assign(new ChatMessageEntity(), message, { messageType: 'text', content: toolFailure('FORBIDDEN') });
+  }
+  return message;
 }

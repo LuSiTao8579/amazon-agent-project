@@ -62,7 +62,7 @@ export class AiAgentController {
   @ApiOkResponse({ type: ChatMessagesPageResponseDto })
   listMessages(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string,
     @Query(dtoPipe(MessagePageDto)) paging: MessagePageDto) {
-    return this.chats.listMessages(request.user.id, id, paging);
+    return this.chats.listMessages(request.user.id, id, paging, request.toolContext);
   }
 
   @Post(':id/messages')

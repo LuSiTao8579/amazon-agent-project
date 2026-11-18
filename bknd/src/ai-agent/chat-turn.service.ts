@@ -4,7 +4,7 @@ import { ModelService } from './providers/model.service.js';
 import { ToolRegistryService } from '../ai/tools/tool-registry.service.js';
 import type { ToolContext } from '../jwt-auth.guard.js';
 import { candidateTools } from './providers/chat-tools.js';
-import { toolTurnReply, type TurnReply } from './turn-reply.js';
+import { toolTurnReply, visibleMessage, type TurnReply } from './turn-reply.js';
 import { ModelError } from './providers/chat-model.types.js';
 import type { ModelMessage } from './providers/chat-model.types.js';
 import type { ChatMessageEntity } from './entities/chat-message.entity.js';
@@ -64,7 +64,7 @@ export class ChatTurnService {
           throw new ConflictException('该请求未成功；如需再次尝试，请使用新的请求编号');
         return {turnId:existing.id,status:'completed',
           userMessage:await this.turns.message(client,existing.user_message_id),
-          assistantMessage:await this.turns.message(client,existing.assistant_message_id)};
+          assistantMessage:visibleMessage(await this.turns.message(client,existing.assistant_message_id), context)};
       }
       const started=await this.turns.beginTurn(client,userId,sessionId,input.requestId,input.text);
       const key = { kind: 'session', userId, sessionId } as const;

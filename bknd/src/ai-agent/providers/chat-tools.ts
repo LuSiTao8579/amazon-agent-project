@@ -1,5 +1,5 @@
 import { COMPANY_SORT_COLUMNS } from '../../companies/company.dto.js';
-import { USER_ROLES, USER_SORT_COLUMNS } from '../../users/user-management.dto.js';
+import { USER_ROLES, USER_SORT_COLUMNS, USER_STATUSES } from '../../users/user-management.dto.js';
 
 const paging = {
   page: { type: 'integer', minimum: 1, maximum: 1000000 },
@@ -15,9 +15,10 @@ const schemas = {
       levels: { type: 'array', items: { type: 'integer', minimum: 1, maximum: 100 } } },
   },
   query_users: {
-    description: '查询用户列表，可按姓名和岗位筛选。',
+    description: '查询用户列表，支持姓名关键词、多岗位和账号状态组合筛选、排序及分页。',
     properties: { ...paging, search: { type: 'string', description: '姓名关键词' },
       sortBy: { type: 'string', enum: Object.keys(USER_SORT_COLUMNS) },
+      status: { type: 'string', enum: USER_STATUSES, description: '启用为 active，停用为 inactive' },
       roles: { type: 'array', items: { type: 'string', enum: USER_ROLES } } },
   },
   dashboard_metrics: { description: '获取全部公司的 Dashboard 汇总指标、等级占比和成立年份趋势。', properties: {} },

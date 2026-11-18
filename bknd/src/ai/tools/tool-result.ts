@@ -23,7 +23,7 @@ export function invalidToolArgs(errors: ValidationError[]): BadRequestException 
   const hints: Record<string, string> = {
     page: '页码须为 1 至 1000000 的整数。', pageSize: '每页条数须为 1 至 100 的整数。',
     sortBy: '该查询不支持所选排序字段。', sortOrder: '排序方向须为 asc 或 desc。',
-    roles: '请选择有效岗位。', levels: '请选择有效的公司等级。', search: '搜索关键词须为不超过 100 字的文本。',
+    roles: '请选择有效岗位。', status: '账号状态须为 active 或 inactive。', levels: '请选择有效的公司等级。', search: '搜索关键词须为不超过 100 字的文本。',
   };
   const hint = first && Object.hasOwn(hints, first.property) ? hints[first.property] : errorMessages.INVALID_ARGUMENTS;
   return new ToolArgumentError(hint);

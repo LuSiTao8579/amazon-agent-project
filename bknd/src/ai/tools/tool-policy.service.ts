@@ -1,5 +1,6 @@
-import { ForbiddenException, Inject, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { requireToolContext, type ToolContext } from '../../jwt-auth.guard.js';
+import { ForbiddenException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { isCurrentAdmin } from '../../admin.guard.js';
+import type { ToolContext } from '../../jwt-auth.guard.js';
 import { UsersService } from '../../users/users.service.js';
 import { AiCacheService } from '../cache/ai-cache.service.js';
 import type { ToolMetadata, ToolPermission } from './tool.decorator.js';
@@ -10,10 +11,7 @@ export class ToolPolicyService {
     @Inject(AiCacheService) private readonly cache: AiCacheService) {}
 
   async isCurrentAdmin(context: ToolContext): Promise<boolean> {
-    requireToolContext(context);
-    const actor = await this.users.findById(context.userId);
-    if (!actor || actor.status !== 'active') throw new UnauthorizedException('登录状态已失效');
-    return context.isAdmin && actor.isAdmin;
+    return isCurrentAdmin(context, this.users);
   }
 
   permits(isAdmin: boolean, permission: ToolPermission): boolean {

@@ -1,4 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type { ToolContext } from '../jwt-auth.guard.js';
+import { visibleMessage } from './turn-reply.js';
 import { ChatRepository } from './chat.repository.js';
 import { ChatTurnRepository } from './chat-turn.repository.js';
 import { AiSessionContextCache } from '../ai/cache/ai-session-context.cache.js';
@@ -34,11 +36,11 @@ export class AiAgentService {
     });
   }
 
-  async listMessages(userId: string, sessionId: string, paging: MessagePageDto) {
+  async listMessages(userId: string, sessionId: string, paging: MessagePageDto, context: ToolContext | undefined) {
     // 不存在与他人会话统一返回404，不泄露会话是否属于其他人。
     if (!(await this.chats.getSession(userId, sessionId))) throw new NotFoundException('会话不存在');
     const rows = await this.chats.listMessages(userId, sessionId, paging.pageSize + 1, (paging.page - 1) * paging.pageSize, paging.cursor);
-    return { items: rows.slice(0, paging.pageSize), page: paging.page, pageSize: paging.pageSize, hasMore: rows.length > paging.pageSize };
+    return { items: rows.slice(0, paging.pageSize).map(row => visibleMessage(row, context)), page: paging.page, pageSize: paging.pageSize, hasMore: rows.length > paging.pageSize };
   }
 
   async createMessage(userId: string, sessionId: string, input: CreateChatMessageDto) {

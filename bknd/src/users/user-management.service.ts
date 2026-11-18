@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import pg from 'pg';
+import { isCurrentAdmin, requireAdmin } from '../admin.guard.js';
+import type { ToolContext } from '../jwt-auth.guard.js';
 import { PG_POOL } from '../database/database.module.js';
 import { listOrderBy, searchPattern } from '../common/list.dto.js';
 import { PasswordHasher } from './password-hasher.service.js';
@@ -14,15 +16,21 @@ export class UserManagementService {
     @Inject(UsersService) private readonly users: UsersService,
     @Inject(PasswordHasher) private readonly hasher: PasswordHasher) {}
 
-  async list(query: UserListDto) {
+  async list(query: UserListDto, context: ToolContext | undefined) {
+    requireAdmin(await isCurrentAdmin(context, this.users));
     const orderBy = listOrderBy(query, USER_SORT_COLUMNS, 'createdAt', 'desc', 'id');
-    const values = [searchPattern(query.search), query.roles ?? null];
-    const where = 'name ILIKE $1 AND ($2::text[] IS NULL OR role = ANY($2))';
-    const count = await this.pool.query<{ total: number }>(`SELECT count(*)::int AS total FROM users WHERE ${where}`, values);
-    const { rows } = await this.pool.query<PublicUser>(
-      `SELECT ${PUBLIC_COLUMNS} FROM users WHERE ${where} ORDER BY ${orderBy} LIMIT $3 OFFSET $4`,
-      [...values, query.pageSize, (query.page - 1) * query.pageSize]);
-    return { items: rows, total: count.rows[0].total, page: query.page, pageSize: query.pageSize };
+    // 统计与当前页共享筛选和数据库快照。页码超过末页时仍能返回匹配总数。
+    const { rows } = await this.pool.query<PublicUser & { total: number }>(`
+      WITH matched AS NOT MATERIALIZED (
+        SELECT * FROM users WHERE name ILIKE $1 AND ($2::text[] IS NULL OR role = ANY($2))
+          AND ($3::text IS NULL OR status = $3)
+      )
+      SELECT ${PUBLIC_COLUMNS}, counts.total FROM (SELECT count(*)::int AS total FROM matched) counts
+      LEFT JOIN (SELECT * FROM matched ORDER BY ${orderBy} LIMIT $4 OFFSET $5) page_rows ON TRUE
+      ORDER BY ${orderBy}`,
+      [searchPattern(query.search), query.roles ?? null, query.status ?? null, query.pageSize, (query.page - 1) * query.pageSize]);
+    const items = rows.filter(row => row.id !== null).map(({ total: _total, ...user }) => user);
+    return { items, total: rows[0].total, page: query.page, pageSize: query.pageSize };
   }
 
   async get(id: string) {

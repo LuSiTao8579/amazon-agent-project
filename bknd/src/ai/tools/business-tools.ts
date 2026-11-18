@@ -12,13 +12,13 @@ import { Tool } from './tool.decorator.js';
 type Table = Extract<ToolOutput, { resultType: 'table' }>;
 type Report = Extract<ToolOutput, { resultType: 'report' }>;
 
-@Tool({ name: 'query_users', description: '按姓名和岗位查询用户列表', intent: 'QUERY_DATA', permission: 'users.read' })
+@Tool({ name: 'query_users', description: '按姓名关键词、多个岗位和账号状态查询用户，支持排序与分页', intent: 'QUERY_DATA', permission: 'users.read' })
 export class QueryUsersTool extends BaseTool<UserListDto, Table> {
   readonly inputDto = UserListDto;
   constructor(@Inject(UserManagementService) private readonly users: UserManagementService) { super(); }
 
-  protected async run(_context: ToolContext, args: UserListDto): Promise<Table> {
-    const { items, total, page, pageSize } = await this.users.list(args);
+  protected async run(context: ToolContext, args: UserListDto): Promise<Table> {
+    const { items, total, page, pageSize } = await this.users.list(args, context);
     return { resultType: 'table', data: { tableType: 'users', total, page, pageSize,
       items: items.map(({ name, email, role, status }) => ({ name, email, role, status })) } };
   }

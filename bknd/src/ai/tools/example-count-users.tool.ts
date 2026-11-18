@@ -16,8 +16,8 @@ export class ExampleCountUsersTool extends BaseTool<UserListDto, CountOutput> {
     super();
   }
 
-  protected async run(_context: ToolContext, args: UserListDto): Promise<CountOutput> {
-    const { total } = await this.users.list(args);
+  protected async run(context: ToolContext, args: UserListDto): Promise<CountOutput> {
+    const { total } = await this.users.list(args, context);
     return { resultType: 'text', data: { text: `匹配用户数为 ${total}。` } };
   }
 }
