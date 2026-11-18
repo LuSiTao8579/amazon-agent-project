@@ -86,6 +86,34 @@ describe('用户与公司管理 API', () => {
     expect(result.body.levelDistribution.reduce((sum: number, row: {count: number}) => sum + row.count, 0)).toBe(count.rows[0].n);
     if (count.rows[0].n) expect(result.body.yearlyGrowth.at(-1).cumulativeCompanies).toBe(count.rows[0].n);
   });
+  it('服务端按业务白名单排序后分页，同值按主键稳定排序', async () => {
+    const server = app.getHttpServer();
+    const companies = request(server);
+    const headers = { Authorization: 'Bearer ' + memberToken };
+    const codes = ['a', 'b', 'c'].map(suffix => code + '-' + suffix);
+    try {
+      for (const [index, companyCode] of codes.entries()) {
+        await pool.query(`INSERT INTO companies(company_code,company_name,level,country,city,founded_year,annual_revenue,employees)
+          VALUES ($1,$2,1,'UK','London',2020,$3,1)`, [companyCode, prefix, index === 0 ? 1 : 2]);
+      }
+      const query = { search: prefix, sortBy: 'revenuePerEmployee', sortOrder: 'desc', pageSize: 1 };
+      for (const [index, expected] of [codes[1], codes[2], codes[0]].entries()) {
+        const { body } = await companies.get('/companies').set(headers).query({ ...query, page: index + 1 }).expect(200);
+        expect(body).toMatchObject({ total: 3, page: index + 1, pageSize: 1, items: [{ companyCode: expected }] });
+      }
+      const original = await companies.get('/companies').set(headers).query({ search: prefix }).expect(200);
+      expect(original.body.items.map((row: { companyCode: string }) => row.companyCode)).toEqual(codes);
+      await companies.get('/companies').set(headers).query({ sortBy: 'email' }).expect(400);
+      const users = await request(server).get('/users').auth(adminToken, { type: 'bearer' })
+        .query({ sortBy: 'email', sortOrder: 'desc', pageSize: 100 }).expect(200);
+      const expected = await pool.query('SELECT email FROM users ORDER BY email DESC, id ASC LIMIT 100');
+      expect(users.body.items.map((row: { email: string }) => row.email)).toEqual(expected.rows.map(row => row.email));
+      await request(server).get('/users').auth(adminToken, { type: 'bearer' }).query({ sortBy: 'level' }).expect(400);
+    } finally {
+      await pool.query('DELETE FROM companies WHERE company_code = ANY($1::text[])', [codes]);
+    }
+  });
+
   it('公司可查询，写入需管理员，关联公司受保护', async () => {
     const server = app.getHttpServer();
     const company = { companyCode: code, companyName: 'Test Company', level: 2, country: 'UK', city: 'London', foundedYear: 2000, annualRevenue: 100, employees: 2 };

@@ -7,12 +7,12 @@
 在使用 `JwtAuthGuard` 的 Nest 请求处理方法中，从 `@Req()` 取得 `ToolRequest`，将模型或客户端提出的业务参数单独传入。下例中的 `tool` 是通过 Nest 注入的示例工具。
 
 ```ts
-const total = await tool.execute(request.toolContext, { roles: ['Analyst'] });
+const result = await tool.execute(request.toolContext, { roles: ['Analyst'] });
 ```
 
 1. 守卫验证 JWT 并查库确认账号有效，用当前用户 ID、当前管理员标记和 TCP 对端 IP 生成只读上下文。服务端按对象引用识别签发的上下文，调用方须在当前请求中直接传递原对象。经过前端代理时，该 IP 代表连接到后端的代理；客户端自行提供的转发头不能覆盖它。[JWT 守卫](../bknd/src/jwt-auth.guard.ts)
-2. `execute` 首先验证上下文来源，缺失上下文或传入复制的普通对象会得到 401。然后按工具声明的操作权限鉴权。`users.read` 与用户管理页面共用管理员判定；`companies.read` 和 `dashboard.read` 允许有效登录用户。遇到未知权限时拒绝执行。[工具基类](../bknd/src/ai/tools/base-tool.ts) · [管理员判定](../bknd/src/admin.guard.ts)
-3. 基类通过现有 AI DTO 管道校验并转换 `args`。本例仅接收 `UserListDto` 的姓名、岗位和分页参数，默认第 1 页、每页 10 条。传入 `userId`、`isAdmin`、`context` 或 `ip` 会得到 400。只有通过上述检查后才调用 `run(context, args)`。[DTO 管道](../bknd/src/ai/dto/ai-dto.pipe.ts) · [用户列表 DTO](../bknd/src/users/user-management.dto.ts)
+2. `execute` 首先验证上下文来源，缺失上下文或传入复制的普通对象会得到工具结果码 `UNAUTHENTICATED`。然后按工具声明的操作权限鉴权。`users.read` 与用户管理页面共用管理员判定；`companies.read` 和 `dashboard.read` 允许有效登录用户。遇到未知权限时拒绝执行。[工具基类](../bknd/src/ai/tools/base-tool.ts) · [管理员判定](../bknd/src/admin.guard.ts)
+3. 基类通过现有 AI DTO 管道校验并转换 `args`。本例仅接收 `UserListDto` 的姓名、岗位、排序和分页参数，默认第 1 页、每页 10 条。传入 `userId`、`isAdmin`、`context` 或 `ip` 会得到工具结果码 `INVALID_ARGUMENTS`。只有通过上述检查后才调用 `run(context, args)`。[DTO 管道](../bknd/src/ai/dto/ai-dto.pipe.ts) · [用户列表 DTO](../bknd/src/users/user-management.dto.ts)
 
 ## 添加一个只读工具
 

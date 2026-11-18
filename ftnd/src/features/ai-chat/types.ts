@@ -7,13 +7,14 @@ type MessageBase = {
   attachments?: { id: string; name: string; size: number }[];
 };
 
-type DeferredContent = { title: string | null };
+type DeferredContent = { title: string | null; summary?: string };
 export type ChatMessage = MessageBase & (
   | { type: 'text'; content: { text: string } }
   | { type: 'table'; content: DeferredContent }
   | { type: 'chart'; content: DeferredContent }
   | { type: 'report'; content: DeferredContent }
   | { type: 'confirmation'; content: DeferredContent }
+  | { type: 'tool-error'; content: { message: string } }
   | { type: 'unsupported'; content: { reason: string } }
 );
 export type TextMessage = Extract<ChatMessage, { type: 'text' }>;

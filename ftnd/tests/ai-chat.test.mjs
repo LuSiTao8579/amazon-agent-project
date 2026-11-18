@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { examples } from '../../contracts/tool-result.examples.ts';
 import { normalizeMessage } from '../src/features/ai-chat/normalize-message.ts';
 
 const base = { id: '1', role: 'assistant', createdAt: '2026-01-01T00:00:00Z', turnStatus: 'completed' };
@@ -26,4 +27,28 @@ test('attachment metadata is whitelisted and checked before display', () => {
     {id, name:'test.csv', size:'12', storageKey:'private'}, {id:'invalid', name:'bad', size:20},
   ]});
   assert.deepEqual(result.attachments, [{id, name:'test.csv', size:12}]);
+});
+
+
+test('固定样例通过历史消息入口区分文本、两种表格、单图和报表', () => {
+  for (const [key, expectedTitle] of [['text', undefined], ['users', '用户表'], ['companies', '公司表'],
+    ['chart', '公司成立年份累计趋势'], ['report', 'Dashboard']]) {
+    const content = examples[key];
+    const message = normalizeMessage({ ...base, messageType: content.resultType, content });
+    assert.equal(message.type, content.resultType);
+    assert.equal(message.content.title, expectedTitle);
+    if (key === 'text') assert.equal(message.content.text, content.data.text);
+    else assert.ok(message.content.summary);
+  }
+});
+test('零匹配、超出最后一页、工具失败与损坏的结果分别展示', () => {
+  const read = content => normalizeMessage({ ...base, messageType: content.resultType, content });
+  assert.deepEqual(read(examples.empty).content, { title: '公司表', summary: '没有符合条件的记录。' });
+  const laterPage = { ...examples.empty, data: { ...examples.empty.data, total: 3, page: 2 } };
+  assert.match(read(laterPage).content.summary, /共 3 条，第 2 页显示 0 条/);
+  for (const content of [examples.disabled, examples.forbidden]) {
+    assert.equal(read(content).type, 'tool-error');
+    assert.equal(read(content).content.message, content.message);
+  }
+  assert.equal(read({ ...examples.empty, data: null }).type, 'unsupported');
 });

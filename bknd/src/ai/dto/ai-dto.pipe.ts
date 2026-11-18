@@ -1,4 +1,4 @@
-import { BadRequestException, ValidationPipe, type ArgumentMetadata, type Type } from '@nestjs/common';
+import { BadRequestException, ValidationPipe, type ArgumentMetadata, type ValidationPipeOptions, type Type } from '@nestjs/common';
 
 /** AI DTO 专用管道：在现有校验策略外拒绝数组、null 和标量。 */
 class AiDtoValidationPipe extends ValidationPipe {
@@ -11,9 +11,10 @@ class AiDtoValidationPipe extends ValidationPipe {
 }
 
 /** 后续 Controller 显式使用，以兼容生产和测试环境的类型元数据差异。 */
-export function aiDtoPipe(type: Type<object>): ValidationPipe {
+export function aiDtoPipe(type: Type<object>, exceptionFactory?: ValidationPipeOptions['exceptionFactory']): ValidationPipe {
   return new AiDtoValidationPipe({
     expectedType: type,
+    exceptionFactory,
     transform: true,
     whitelist: true,
     forbidNonWhitelisted: true,

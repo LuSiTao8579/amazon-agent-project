@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import pg from 'pg';
 import { PG_POOL } from '../database/database.module.js';
-import { searchPattern } from '../common/list.dto.js';
+import { listOrderBy, searchPattern } from '../common/list.dto.js';
 import { PasswordHasher } from './password-hasher.service.js';
 import { UsersService, PUBLIC_COLUMNS } from './users.service.js';
 import type { PublicUser } from './user.types.js';
+import { USER_SORT_COLUMNS } from './user-management.dto.js';
 import type { CreateUserDto, UpdateUserDto, UserListDto } from './user-management.dto.js';
 
 @Injectable()
@@ -14,11 +15,12 @@ export class UserManagementService {
     @Inject(PasswordHasher) private readonly hasher: PasswordHasher) {}
 
   async list(query: UserListDto) {
+    const orderBy = listOrderBy(query, USER_SORT_COLUMNS, 'createdAt', 'desc', 'id');
     const values = [searchPattern(query.search), query.roles ?? null];
     const where = 'name ILIKE $1 AND ($2::text[] IS NULL OR role = ANY($2))';
     const count = await this.pool.query<{ total: number }>(`SELECT count(*)::int AS total FROM users WHERE ${where}`, values);
     const { rows } = await this.pool.query<PublicUser>(
-      `SELECT ${PUBLIC_COLUMNS} FROM users WHERE ${where} ORDER BY created_at DESC, id LIMIT $3 OFFSET $4`,
+      `SELECT ${PUBLIC_COLUMNS} FROM users WHERE ${where} ORDER BY ${orderBy} LIMIT $3 OFFSET $4`,
       [...values, query.pageSize, (query.page - 1) * query.pageSize]);
     return { items: rows, total: count.rows[0].total, page: query.page, pageSize: query.pageSize };
   }

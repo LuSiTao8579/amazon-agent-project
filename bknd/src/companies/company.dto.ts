@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsNumber, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { ListDto } from '../common/list.dto.js';
 
 export class CreateCompanyDto {
@@ -57,7 +57,18 @@ export class CreateCompanyDto {
 
 export class UpdateCompanyDto extends PartialType(OmitType(CreateCompanyDto, ['companyCode'] as const), { skipNullProperties: false }) {}
 
+export const COMPANY_SORT_COLUMNS = {
+  companyCode: 'company_code', companyName: 'company_name', level: 'level', country: 'country',
+  city: 'city', foundedYear: 'founded_year', annualRevenue: 'annual_revenue', employees: 'employees',
+  revenuePerEmployee: '"revenuePerEmployee"',
+} as const;
+
 export class CompanyListDto extends ListDto {
+  @ApiPropertyOptional({ enum: Object.keys(COMPANY_SORT_COLUMNS) })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(Object.keys(COMPANY_SORT_COLUMNS))
+  sortBy?: keyof typeof COMPANY_SORT_COLUMNS;
+
   @ApiPropertyOptional({ type: String, example: '1,2', description: '逗号分隔的等级，多选采用 OR' })
   @ValidateIf((_object, value) => value !== undefined)
   @Transform(({ value }: { value: unknown }) => typeof value === 'string'

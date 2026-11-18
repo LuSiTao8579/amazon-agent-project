@@ -27,7 +27,16 @@ export class CreateUserDto extends SignupDto {
 // null 不是“保持原值”；只允许未出现的字段跳过校验。
 export class UpdateUserDto extends PartialType(OmitType(CreateUserDto, ['password'] as const), { skipNullProperties: false }) {}
 
+export const USER_SORT_COLUMNS = {
+  name: 'name', email: 'email', role: 'role', status: 'status', createdAt: 'created_at',
+} as const;
+
 export class UserListDto extends ListDto {
+  @ApiPropertyOptional({ enum: Object.keys(USER_SORT_COLUMNS) })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(Object.keys(USER_SORT_COLUMNS))
+  sortBy?: keyof typeof USER_SORT_COLUMNS;
+
   @ApiPropertyOptional({ type: String, example: 'Member,Analyst', description: '逗号分隔的岗位，多选采用 OR；和姓名搜索采用 AND' })
   @ValidateIf((_object, value) => value !== undefined)
   @Transform(({ value }: { value: unknown }) => typeof value === 'string' ? value.split(',') : value)

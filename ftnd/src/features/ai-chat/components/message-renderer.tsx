@@ -5,10 +5,16 @@ import TextMessageView from './text-message';
 /** 根据消息类型选择组件；未实现的业务类型只显示说明。 */
 export default function MessageRenderer({ message }: { message: ChatMessage }) {
   switch (message.type) {
+    case 'tool-error': return <Alert severity="error">{message.content.message}</Alert>;
     case 'text': return <TextMessageView message={message} />;
-    case 'table': return <Placeholder kind="表格" title={message.content.title} />;
-    case 'chart': return <Placeholder kind="图表" title={message.content.title} />;
-    case 'report': return <Placeholder kind="报表" title={message.content.title} />;
+    case 'table':
+    case 'chart':
+    case 'report': {
+      const { title, summary } = message.content;
+      if (summary) return <Typography variant="body2">{title} · {summary}</Typography>;
+      const kinds = { table: '表格', chart: '图表', report: '报表' };
+      return <Placeholder kind={kinds[message.type]} title={title} />;
+    }
     case 'confirmation': return <Placeholder kind="人工确认" title={message.content.title} />;
     case 'unsupported': return <Alert severity="info">{message.content.reason}</Alert>;
   }

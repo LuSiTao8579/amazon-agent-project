@@ -4,8 +4,10 @@ import { UserListDto } from '../../users/user-management.dto.js';
 import { UserManagementService } from '../../users/user-management.service.js';
 import { BaseTool } from './base-tool.js';
 
+type CountOutput = { resultType: 'text'; data: { text: string } };
+
 @Injectable()
-export class ExampleCountUsersTool extends BaseTool<UserListDto, number> {
+export class ExampleCountUsersTool extends BaseTool<UserListDto, CountOutput> {
   readonly name = 'example_count_users';
   readonly description = '按姓名或岗位统计匹配的用户数';
   readonly intent = 'QUERY_DATA';
@@ -16,8 +18,8 @@ export class ExampleCountUsersTool extends BaseTool<UserListDto, number> {
     super();
   }
 
-  protected async run(_context: ToolContext, args: UserListDto): Promise<number> {
+  protected async run(_context: ToolContext, args: UserListDto): Promise<CountOutput> {
     const { total } = await this.users.list(args);
-    return total;
+    return { resultType: 'text', data: { text: `匹配用户数为 ${total}。` } };
   }
 }

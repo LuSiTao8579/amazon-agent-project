@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import pg from 'pg';
 import { PG_POOL } from '../database/database.module.js';
-import { searchPattern } from '../common/list.dto.js';
+import { listOrderBy, searchPattern } from '../common/list.dto.js';
+import { COMPANY_SORT_COLUMNS } from './company.dto.js';
 import type { CompanyListDto, CreateCompanyDto, UpdateCompanyDto } from './company.dto.js';
 
 const COLUMNS = `company_code AS "companyCode", company_name AS "companyName", level, country, city,
@@ -18,11 +19,12 @@ export class CompaniesService {
   constructor(@Inject(PG_POOL) private readonly pool: pg.Pool) {}
 
   async list(query: CompanyListDto) {
+    const orderBy = listOrderBy(query, COMPANY_SORT_COLUMNS, 'companyCode', 'asc', 'company_code');
     const args = [searchPattern(query.search), query.levels ?? null];
     const where = 'company_name ILIKE $1 AND ($2::int[] IS NULL OR level = ANY($2))';
     const count = await this.pool.query<{ total: number }>(`SELECT count(*)::int AS total FROM companies WHERE ${where}`, args);
     const { rows } = await this.pool.query(
-      `SELECT ${COLUMNS} FROM companies WHERE ${where} ORDER BY company_code LIMIT $3 OFFSET $4`,
+      `SELECT ${COLUMNS} FROM companies WHERE ${where} ORDER BY ${orderBy} LIMIT $3 OFFSET $4`,
       [...args, query.pageSize, (query.page - 1) * query.pageSize]);
     return { items: rows, total: count.rows[0].total, page: query.page, pageSize: query.pageSize };
   }
