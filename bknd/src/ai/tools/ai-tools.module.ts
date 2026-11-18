@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AiAuditModule } from '../ai-audit.module.js';
+import { TOOL_EXECUTOR } from './tool-executor.js';
 import { DiscoveryModule } from '@nestjs/core';
 import { CompaniesModule } from '../../companies/companies.module.js';
 import { DashboardModule } from '../../dashboard/dashboard.module.js';
@@ -11,8 +13,8 @@ import { ToolPolicyService } from './tool-policy.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
 
 @Module({
-  imports: [DiscoveryModule, AiCacheModule, UsersModule, UserManagementModule, CompaniesModule, DashboardModule],
-  providers: [ToolPolicyService, ToolRegistryService, QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool, ExampleCountUsersTool],
-  exports: [ToolRegistryService, ToolPolicyService, ExampleCountUsersTool],
+  imports: [AiAuditModule, DiscoveryModule, AiCacheModule, UsersModule, UserManagementModule, CompaniesModule, DashboardModule],
+  providers: [{ provide: TOOL_EXECUTOR, useExisting: ToolRegistryService }, ToolPolicyService, ToolRegistryService, QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool, ExampleCountUsersTool],
+  exports: [TOOL_EXECUTOR, ToolRegistryService, ToolPolicyService, ExampleCountUsersTool],
 })
 export class AiToolsModule {}

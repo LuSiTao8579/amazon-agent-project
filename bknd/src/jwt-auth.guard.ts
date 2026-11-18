@@ -18,8 +18,12 @@ export type ToolRequest = Request & { toolContext?: ToolContext };
 // 只有完成 JWT 验证和账号检查的请求才能获得可用的上下文对象。
 const issuedContexts = new WeakSet<ToolContext>();
 
+export function isIssuedToolContext(context: ToolContext | undefined): context is ToolContext {
+  return !!context && issuedContexts.has(context);
+}
+
 export function requireToolContext(context: ToolContext | undefined): asserts context is ToolContext {
-  if (!context || !issuedContexts.has(context)) {
+  if (!isIssuedToolContext(context)) {
     throw new UnauthorizedException('需要已认证请求的工具上下文');
   }
 }

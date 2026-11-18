@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { Body, Controller, Inject, Post, Req, ServiceUnavailableException, UseGuards, type INestApplication } from '@nestjs/common';
+import { Body, Controller, Inject, Module, Post, Req, ServiceUnavailableException, UseGuards, type INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
@@ -15,6 +15,8 @@ import { CompaniesService } from '../../companies/companies.service.js';
 import { DashboardService } from '../../dashboard/dashboard.service.js';
 import { AiCacheService } from '../cache/ai-cache.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
+import { AiAuditModule } from '../ai-audit.module.js';
+import { AiAuditService } from '../services/ai-audit.service.js';
 import { AiToolsModule } from './ai-tools.module.js';
 import { toolFailure } from './tool-result.js';
 import { ExampleCountUsersTool } from './example-count-users.tool.js';
@@ -30,6 +32,10 @@ class ExampleController {
     return this.tool.execute(req.toolContext, args);
   }
 }
+
+const recordToolExecution = vi.fn().mockResolvedValue(undefined);
+@Module({ providers: [{ provide: AiAuditService, useValue: { recordToolExecution } }], exports: [AiAuditService] })
+class TestAuditModule {}
 
 describe('工具身份与业务参数', () => {
   const id = randomUUID();
@@ -51,7 +57,7 @@ describe('工具身份与业务参数', () => {
         AiToolsModule, AuthModule, UsersModule,
       ],
       controllers: [ExampleController],
-    }).overrideProvider(UsersService).useValue({ findById })
+    }).overrideModule(AiAuditModule).useModule(TestAuditModule).overrideProvider(UsersService).useValue({ findById })
       .overrideProvider(AiCacheService).useValue({ isToolEnabled })
       .overrideProvider(CompaniesService).useValue(companies)
       .overrideProvider(DashboardService).useValue(dashboard)
@@ -144,6 +150,14 @@ describe('工具身份与业务参数', () => {
     isToolEnabled.mockRejectedValueOnce(new ServiceUnavailableException());
     expect(await registry.execute('query_companies', context, {})).toEqual(toolFailure('TOOL_UNAVAILABLE'));
     expect(companies.list).not.toHaveBeenCalled();
+  });
+
+  it('直接调用教学工具也只审计一次，写入失败时不交付查询数据', async () => {
+    recordToolExecution.mockRejectedValueOnce(new Error('database unavailable'));
+    await request(app.getHttpServer()).post('/example').auth(token, { type: 'bearer' }).send({})
+      .expect(201, toolFailure('EXECUTION_FAILED'));
+    expect(recordToolExecution).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(1);
   });
 
   it('缺少或伪造的上下文均被拒绝', async () => {

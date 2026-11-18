@@ -1,6 +1,10 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { ToolResult } from '../../../../contracts/tool-result.js';
+import { isIssuedToolContext, type ToolContext } from '../../jwt-auth.guard.js';
+import { summarizeToolResult, type ToolAuditInput } from '../tools/tool-audit-data.js';
+import type { ToolMetadata } from '../tools/tool.decorator.js';
 import { UsersService } from '../../users/users.service.js';
 import { AI_DATA_SOURCE } from '../ai.constants.js';
 import type { AdminQueryAiAuditDto, CreateAiAuditDto, QueryAiAuditDto } from '../dto/ai-audit.dto.js';
@@ -22,6 +26,21 @@ export class AiAuditService {
       userId, action: input.action, resourceType: input.resourceType,
       resourceId: input.resourceId ?? null, result: input.result,
     }));
+  }
+
+  async recordToolExecution(context: ToolContext | undefined, tool: ToolMetadata | undefined,
+    inputParams: ToolAuditInput, outcome: ToolResult): Promise<void> {
+    const actor = isIssuedToolContext(context) ? context : undefined;
+    const record = new AiOperationAuditEntity();
+    record.userId = actor?.userId ?? null;
+    record.ip = actor?.ip ?? null;
+    record.action = tool?.permission ?? 'tool.execute';
+    record.resourceType = 'tool';
+    record.toolName = tool?.name ?? '[unknown]';
+    record.inputParams = inputParams;
+    record.result = outcome.code === 'OK' ? 'success' : 'failure';
+    record.resultSummary = summarizeToolResult(outcome);
+    await this.records.save(record);
   }
 
   async listMine(userId: string, query: QueryAiAuditDto): Promise<AiPage<AiOperationAuditEntity>> {

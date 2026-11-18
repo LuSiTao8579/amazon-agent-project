@@ -5,7 +5,10 @@ import { requireToolContext, type ToolContext } from '../../jwt-auth.guard.js';
 import { BaseTool } from './base-tool.js';
 import { ToolPolicyService } from './tool-policy.service.js';
 import { readToolMetadata, validateToolMetadata, type ToolIntent, type ToolMetadata } from './tool.decorator.js';
-import { toolFailure, toolErrorResult } from './tool-result.js';
+import { AiAuditService } from '../services/ai-audit.service.js';
+import { AuditToolExecution } from './audit-tool-execution.decorator.js';
+import { dispatchTool } from './tool-executor.js';
+import { toolFailure } from './tool-result.js';
 
 type Entry = { tool: BaseTool<object, ToolOutput>; meta: ToolMetadata };
 
@@ -14,7 +17,8 @@ export class ToolRegistryService implements OnModuleInit {
   private entries = new Map<string, Entry>();
 
   constructor(@Inject(DiscoveryService) private readonly discovery: DiscoveryService,
-    @Inject(ToolPolicyService) private readonly policy: ToolPolicyService) {}
+    @Inject(ToolPolicyService) private readonly policy: ToolPolicyService,
+    @Inject(AiAuditService) private readonly audit: AiAuditService) {}
 
   onModuleInit() {
     const entries = new Map<string, Entry>();
@@ -27,7 +31,7 @@ export class ToolRegistryService implements OnModuleInit {
       if (!provider.isDependencyTreeStatic() || provider.scope === Scope.TRANSIENT || !(tool instanceof BaseTool)) {
         throw new Error(`${meta.name} 必须是继承 BaseTool 的单例 provider`);
       }
-      if (tool.execute !== BaseTool.prototype.execute) throw new Error(`${meta.name} 不可覆盖统一执行入口 execute`);
+      if (tool.execute !== BaseTool.prototype.execute || tool[dispatchTool] !== BaseTool.prototype[dispatchTool]) throw new Error(`${meta.name} 不可覆盖统一执行入口 execute`);
       if (typeof tool.inputDto !== 'function') throw new Error(`${meta.name} 缺少输入 DTO`);
       if (entries.has(meta.name)) throw new Error(`重复的工具名称：${meta.name}`);
       entries.set(meta.name, { tool, meta });
@@ -51,14 +55,13 @@ export class ToolRegistryService implements OnModuleInit {
     return this.visible([...this.entries.values()].filter(({ meta }) => meta.intent === intent), context);
   }
 
+  @AuditToolExecution((registry: ToolRegistryService, name) => ({
+    audit: registry.audit, tool: registry.entries.get(name)?.meta,
+  }))
   async execute(name: string, context: ToolContext | undefined, args: unknown): Promise<ToolResult> {
-    try {
-      requireToolContext(context);
-      const entry = this.entries.get(name);
-      if (!entry) return toolFailure('TOOL_UNAVAILABLE');
-      return await entry.tool.execute(context, args);
-    } catch (error) {
-      return toolErrorResult(error);
-    }
+    requireToolContext(context);
+    const entry = this.entries.get(name);
+    if (!entry) return toolFailure('TOOL_UNAVAILABLE');
+    return entry.tool[dispatchTool](context, args);
   }
 }

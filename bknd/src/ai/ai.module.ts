@@ -13,7 +13,7 @@ import { AiTaskStateStore } from './cache/ai-task-state.store.js';
 import { AiSessionService } from './services/ai-session.service.js';
 import { AiMemoryService } from './services/ai-memory.service.js';
 import { AiTaskService } from './services/ai-task.service.js';
-import { AiAuditService } from './services/ai-audit.service.js';
+import { AiAuditModule } from './ai-audit.module.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiChatSessionEntity } from './entities/ai-chat-session.entity.js';
 import { AiUserMemoryEntity } from './entities/ai-user-memory.entity.js';
@@ -26,6 +26,7 @@ export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecor
 @Module({
   imports: [
     AiCacheModule,
+    AiAuditModule,
     AuthModule,
     AiAgentModule,
     UsersModule,
@@ -49,7 +50,7 @@ export const AI_ENTITIES = [AiChatSessionEntity, AiUserMemoryEntity, AiTaskRecor
     TypeOrmModule.forFeature(AI_ENTITIES, AI_DATA_SOURCE),
   ],
   controllers: [AiSessionController, AiMemoryController, AiTaskController, AiAuditController, AiAdminAuditController],
-  providers: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService, AiTaskStateStore],
-  exports: [AiSessionService, AiMemoryService, AiTaskService, AiAuditService, AiTaskStateStore, AiCacheModule],
+  providers: [AiSessionService, AiMemoryService, AiTaskService, AiTaskStateStore],
+  exports: [AiSessionService, AiMemoryService, AiTaskService, AiAuditModule, AiTaskStateStore, AiCacheModule],
 })
 export class AiModule {}

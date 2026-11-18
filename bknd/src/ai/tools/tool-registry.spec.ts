@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { UserListDto } from '../../users/user-management.dto.js';
 import { BaseTool } from './base-tool.js';
 import { ToolPolicyService } from './tool-policy.service.js';
+import { AiAuditService } from '../services/ai-audit.service.js';
+import { TOOL_EXECUTOR } from './tool-executor.js';
 import { ToolRegistryService } from './tool-registry.service.js';
 import { Tool } from './tool.decorator.js';
 
@@ -29,7 +31,8 @@ describe('工具注册时检查 provider', () => {
     [[MissingDescription], /缺少工具描述/], [[OverridesEntry], /不可覆盖统一执行入口/],
   ])('拒绝重复名称或缺失元数据', async (providers, error) => {
     const mod = await Test.createTestingModule({ imports: [DiscoveryModule], providers: [
-      ToolRegistryService, { provide: ToolPolicyService, useValue: {} }, ...providers,
+      ToolRegistryService, { provide: AiAuditService, useValue: {} }, { provide: TOOL_EXECUTOR, useExisting: ToolRegistryService },
+      { provide: ToolPolicyService, useValue: {} }, ...providers,
     ] }).compile();
     try { expect(() => mod.get(ToolRegistryService).onModuleInit()).toThrow(error); }
     finally { await mod.close(); }

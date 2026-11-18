@@ -69,7 +69,14 @@ done < "$work/old-tables"
 dump_key=$(node -p "require('node:crypto').randomBytes(24).toString('hex')")
 snapshot() { docker exec "$postgres" pg_dump -U app -d week1_upgrade --strict-names --restrict-key="$dump_key" "${table_args[@]}"; }
 snapshot > "$work/before.sql"
+# 按真实升级顺序先写入一条 0007 审计，再检查 0008 对历史行的兼容。
+cp migrations/0007_ai_foundation.sql "$work/migrations/"
+node "$work/scripts/migrate.mjs"
+old_db -c "INSERT INTO ai_operation_audit(user_id,action,resource_type,result)
+  SELECT id,'legacy.read','legacy','success' FROM users WHERE email='legacy@example.test'"
 npm run db:migrate
+[[ $(old_db -c "SELECT count(*) FROM ai_operation_audit WHERE action='legacy.read'
+  AND tool_name IS NULL AND input_params IS NULL AND result_summary IS NULL AND ip IS NULL") == 1 ]]
 snapshot > "$work/after.sql"
 diff -u "$work/before.sql" "$work/after.sql"
 { cat "$work/old-tables"; printf '%s\n' ai_chat_session ai_operation_audit ai_task_record ai_user_memory; } | LC_ALL=C sort > "$work/expected-tables"

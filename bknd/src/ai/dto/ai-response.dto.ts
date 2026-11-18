@@ -29,7 +29,14 @@ export class AiTaskResponseDto {
 
 export class AiAuditResponseDto {
   @ApiProperty({ type: String, format: 'uuid' }) id!: string;
-  @ApiProperty({ type: String, format: 'uuid' }) userId!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) userId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) toolName!: string | null;
+  @ApiProperty({ description: '脱敏后的 JSON 入参', nullable: true, oneOf: [
+    { type: 'object', additionalProperties: true }, { type: 'array', items: {} },
+    { type: 'string' }, { type: 'number' }, { type: 'boolean' },
+  ] }) inputParams!: unknown;
+  @ApiProperty({ type: 'object', additionalProperties: true, nullable: true }) resultSummary!: Record<string, unknown> | null;
+  @ApiProperty({ type: String, nullable: true }) ip!: string | null;
   @ApiProperty({ type: String }) action!: string;
   @ApiProperty({ type: String }) resourceType!: string;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) resourceId!: string | null;
