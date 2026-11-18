@@ -1,10 +1,18 @@
 import { Module } from '@nestjs/common';
+import { DiscoveryModule } from '@nestjs/core';
+import { CompaniesModule } from '../../companies/companies.module.js';
+import { DashboardModule } from '../../dashboard/dashboard.module.js';
 import { UserManagementModule } from '../../users/user-management.module.js';
+import { UsersModule } from '../../users/users.module.js';
+import { AiCacheModule } from '../cache/ai-cache.module.js';
+import { QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool } from './business-tools.js';
 import { ExampleCountUsersTool } from './example-count-users.tool.js';
+import { ToolPolicyService } from './tool-policy.service.js';
+import { ToolRegistryService } from './tool-registry.service.js';
 
 @Module({
-  imports: [UserManagementModule],
-  providers: [ExampleCountUsersTool],
-  exports: [ExampleCountUsersTool],
+  imports: [DiscoveryModule, AiCacheModule, UsersModule, UserManagementModule, CompaniesModule, DashboardModule],
+  providers: [ToolPolicyService, ToolRegistryService, QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool, ExampleCountUsersTool],
+  exports: [ToolRegistryService, ToolPolicyService, ExampleCountUsersTool],
 })
 export class AiToolsModule {}

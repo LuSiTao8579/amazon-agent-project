@@ -44,6 +44,22 @@ describe('AI Redis 缓存服务', () => {
     if (redis?.isOpen) redis.destroy();
   });
 
+  it('运行时从 Redis 读取工具开关，保留默认值，意外值关闭工具', async () => {
+    const field = 'test_' + randomUUID();
+    try {
+      expect(await cache.isToolEnabled(field, true)).toBe(true);
+      expect(await cache.isToolEnabled(field, false)).toBe(false);
+      for (const [value, expected] of [['0', false], ['1', true], ['invalid', false]] as const) {
+        await redis.hSet('ai:tools:enabled', field, value);
+        expect(await cache.isToolEnabled(field, true)).toBe(expected);
+      }
+      await redis.hDel('ai:tools:enabled', field);
+      expect(await cache.isToolEnabled(field, true)).toBe(true);
+    } finally {
+      await redis.hDel('ai:tools:enabled', field);
+    }
+  });
+
   it('会话 JSON 可往返，默认两小时过期，按用户精确失效', async () => {
     const value = [{ user: '问题', assistant: '答复', metadata: { complete: true } }];
     await cache.set(session, value);

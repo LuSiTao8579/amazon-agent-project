@@ -106,6 +106,12 @@ export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
     return base + ':' + (current ?? candidate);
   }
 
+  /** 持久化配置独立于有 TTL 的业务缓存。缺失字段使用声明的默认值，异常值关闭工具。 */
+  async isToolEnabled(name: string, defaultEnabled: boolean): Promise<boolean> {
+    const value = await this.command(this.client.hGet('ai:tools:enabled', name));
+    return value === null ? defaultEnabled : value === '1';
+  }
+
   async get(key: AiCacheKey): Promise<AiCacheValue | undefined> {
     const name = await this.storageKey(key);
     return name === undefined ? undefined : this.decodeValue(key.kind, await this.command(this.client.get(name)));

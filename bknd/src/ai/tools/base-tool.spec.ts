@@ -11,6 +11,10 @@ import { JwtAuthGuard, type ToolRequest } from '../../jwt-auth.guard.js';
 import { UserManagementService } from '../../users/user-management.service.js';
 import { UsersService } from '../../users/users.service.js';
 import { UsersModule } from '../../users/users.module.js';
+import { CompaniesService } from '../../companies/companies.service.js';
+import { DashboardService } from '../../dashboard/dashboard.service.js';
+import { AiCacheService } from '../cache/ai-cache.service.js';
+import { ToolRegistryService } from './tool-registry.service.js';
 import { AiToolsModule } from './ai-tools.module.js';
 import { toolFailure } from './tool-result.js';
 import { ExampleCountUsersTool } from './example-count-users.tool.js';
@@ -30,6 +34,11 @@ class ExampleController {
 describe('工具身份与业务参数', () => {
   const id = randomUUID();
   const findById = vi.fn();
+  const switches = new Map<string, boolean>();
+  const isToolEnabled = vi.fn(async (name: string, fallback: boolean) => switches.get(name) ?? fallback);
+  const companies = { list: vi.fn().mockResolvedValue({ total: 0, items: [], page: 1, pageSize: 10 }) };
+  const dashboard = { getDashboard: vi.fn().mockResolvedValue({ summary: {}, levelDistribution: [], yearlyGrowth: [] }) };
+  let registry: ToolRegistryService;
   const list = vi.fn().mockResolvedValue({ total: 7 });
   let app: INestApplication;
   let token: string;
@@ -43,15 +52,21 @@ describe('工具身份与业务参数', () => {
       ],
       controllers: [ExampleController],
     }).overrideProvider(UsersService).useValue({ findById })
+      .overrideProvider(AiCacheService).useValue({ isToolEnabled })
+      .overrideProvider(CompaniesService).useValue(companies)
+      .overrideProvider(DashboardService).useValue(dashboard)
       .overrideProvider(UserManagementService).useValue({ list }).compile();
     app = module.createNestApplication();
     await app.init();
+    registry = app.get(ToolRegistryService);
     tool = app.get(ExampleCountUsersTool);
     token = await app.get(JwtService).signAsync({ sub: id, isAdmin: true });
   });
 
   beforeEach(() => {
-    list.mockClear();
+    switches.clear();
+    switches.set('example_count_users', true);
+    vi.clearAllMocks();
     findById.mockResolvedValue({ id, isAdmin: true, status: 'active' });
   });
   afterAll(async () => { await app?.close(); });
@@ -70,6 +85,65 @@ describe('工具身份与业务参数', () => {
     } finally {
       execute.mockRestore();
     }
+  });
+
+  async function issuedContext() {
+    const execute = vi.spyOn(tool, 'execute');
+    try {
+      await request(app.getHttpServer()).post('/example').auth(token, { type: 'bearer' }).send({}).expect(201);
+      return execute.mock.calls[0][0]!;
+    } finally {
+      execute.mockRestore();
+      list.mockClear();
+      switches.delete('example_count_users');
+    }
+  }
+
+  it('按名称及意图发现工具，已选中的工具在禁用后拒绝执行，恢复后可查', async () => {
+    const context = await issuedContext();
+    const candidates = await registry.listByIntent('QUERY_DATA', context);
+    expect(candidates.map(tool => tool.name).sort()).toEqual(['query_companies', 'query_users']);
+    expect((await registry.listByIntent('STATISTICS_ANALYSIS', context)).map(tool => tool.name)).toEqual(['dashboard_metrics']);
+    const company = await registry.findByName('query_companies', context);
+    expect(company?.permission).toBe('companies.read');
+    switches.set('query_companies', false);
+    expect(await registry.findByName('query_companies', context)).toBeUndefined();
+    expect((await registry.listByIntent('QUERY_DATA', context)).map(tool => tool.name)).toEqual(['query_users']);
+    expect(await registry.execute(company!.name, context, {})).toEqual(toolFailure('TOOL_UNAVAILABLE'));
+    expect(companies.list).not.toHaveBeenCalled();
+    switches.set('query_companies', true);
+    expect(await registry.execute(company!.name, context, { pageSize: 101 })).toMatchObject({ code: 'INVALID_ARGUMENTS' });
+    expect(companies.list).not.toHaveBeenCalled();
+    expect(await registry.execute(company!.name, context, {})).toMatchObject({ code: 'OK', data: { tableType: 'companies' } });
+    expect(companies.list).toHaveBeenCalledTimes(1);
+    expect(await registry.execute('dashboard_metrics', context, { country: 'UK' })).toMatchObject({ code: 'INVALID_ARGUMENTS' });
+    expect(dashboard.getDashboard).not.toHaveBeenCalled();
+    expect(await registry.execute('dashboard_metrics', context, {})).toMatchObject({ code: 'OK', resultType: 'report' });
+    expect(await registry.execute('unknown', context, {})).toEqual(toolFailure('TOOL_UNAVAILABLE'));
+  });
+
+  it('发现后管理员权限被撤销或账号被停用，同一上下文也不能继续读取', async () => {
+    const context = await issuedContext();
+    expect(await registry.findByName('query_users', context)).toBeDefined();
+    list.mockResolvedValueOnce({ items: [{ name: '示例', email: 'demo@example.test', role: 'Member', status: 'active', isAdmin: true }],
+      total: 1, page: 1, pageSize: 10 });
+    expect((await registry.execute('query_users', context, {})).data).toEqual({ tableType: 'users', total: 1, page: 1, pageSize: 10,
+      items: [{ name: '示例', email: 'demo@example.test', role: 'Member', status: 'active' }] });
+    list.mockClear();
+    findById.mockResolvedValue({ id, status: 'active', isAdmin: false });
+    expect((await registry.listByIntent('QUERY_DATA', context)).map(tool => tool.name)).toEqual(['query_companies']);
+    expect(await registry.execute('query_users', context, {})).toEqual(toolFailure('FORBIDDEN'));
+    expect(list).not.toHaveBeenCalled();
+    findById.mockResolvedValue({ id, status: 'inactive', isAdmin: true });
+    expect(await registry.execute('query_companies', context, {})).toEqual(toolFailure('UNAUTHENTICATED'));
+    expect(companies.list).not.toHaveBeenCalled();
+  });
+
+  it('开关读取故障时返回不可用，未调用业务查询', async () => {
+    const context = await issuedContext();
+    isToolEnabled.mockRejectedValueOnce(new ServiceUnavailableException());
+    expect(await registry.execute('query_companies', context, {})).toEqual(toolFailure('TOOL_UNAVAILABLE'));
+    expect(companies.list).not.toHaveBeenCalled();
   });
 
   it('缺少或伪造的上下文均被拒绝', async () => {
