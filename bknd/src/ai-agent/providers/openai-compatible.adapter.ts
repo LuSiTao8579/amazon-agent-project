@@ -1,4 +1,6 @@
-import { ModelError, type ChatModel, type ModelMessage, type ModelProvider, type ModelReply } from './chat-model.types.js';
+import { ModelError, type ChatModel, type ModelMessage, type ModelProvider, type ModelReply, type ModelToolCall } from './chat-model.types.js';
+
+import { toolDefinitions, toolInstructions, type ChatToolName } from './chat-tools.js';
 
 export type ModelConfig = { provider: ModelProvider; apiKey: string; baseUrl: string; model: string };
 export type FetchLike = typeof fetch;
@@ -18,7 +20,7 @@ export class OpenAICompatibleAdapter implements ChatModel {
     this.endpoint = endpoint;
   }
 
-  async chat(messages: ModelMessage[]): Promise<ModelReply> {
+  async chat(messages: ModelMessage[], tools?: readonly ChatToolName[]): Promise<ModelReply | ModelToolCall> {
     if (!Array.isArray(messages) || messages.length < 1 || messages.length > 40 ||
       messages.some(m => !m || !['system','user','assistant'].includes(m.role) ||
         typeof m.content !== 'string' || !m.content.trim() || m.content.length > 16000))
@@ -30,7 +32,10 @@ export class OpenAICompatibleAdapter implements ChatModel {
       response = await this.transport(this.endpoint, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(60000),
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.config.apiKey}` },
-        body: JSON.stringify({ model: this.config.model, messages, stream: false, ...this.extraBody() }),
+        body: JSON.stringify({ model: this.config.model, messages: tools !== undefined
+          ? [{ role: 'system', content: toolInstructions }, ...messages] : messages,
+          ...(tools?.length ? { tools: toolDefinitions(tools), tool_choice: 'auto' } : {}),
+          stream: false, ...this.extraBody() }),
       });
     } catch (error) {
       if (error instanceof Error && ['TimeoutError','AbortError'].includes(error.name))
@@ -44,7 +49,22 @@ export class OpenAICompatibleAdapter implements ChatModel {
     }
     let data: unknown;
     try { data = await response.json(); } catch { throw new ModelError('invalid_response','模型响应不是有效JSON'); }
-    const choice = (data as { choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }> })?.choices?.[0];
+    const choice = (data as { choices?: Array<{ message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: unknown }> })?.choices?.[0];
+    const calls = choice?.message?.tool_calls;
+    if (calls != null && !(Array.isArray(calls) && calls.length === 0)) {
+      if (!Array.isArray(calls) || calls.length !== 1 || choice?.finish_reason === 'length')
+        throw new ModelError('invalid_response', '每次回复仅支持一个完整工具调用');
+      const call = calls[0];
+      const name = tools?.find(candidate => candidate === call?.function?.name);
+      const raw: unknown = call?.function?.arguments;
+      if (!name || call?.type !== 'function' || typeof raw !== 'string' || raw.length > 16000)
+        throw new ModelError('invalid_response', '模型提出了无效的工具调用');
+      let args: unknown;
+      try { args = JSON.parse(raw); } catch { throw new ModelError('invalid_response', '工具参数格式错误'); }
+      if (!args || typeof args !== 'object' || Array.isArray(args))
+        throw new ModelError('invalid_response', '工具参数必须是对象');
+      return { tool: name, args: args as Record<string, unknown> };
+    }
     if (typeof choice?.message?.content !== 'string' || !choice.message.content.trim())
       throw new ModelError('invalid_response','模型未返回有效文本');
     return { provider: this.config.provider, model: this.config.model, text: choice.message.content,

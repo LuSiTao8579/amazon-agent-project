@@ -21,6 +21,7 @@ export default function ChatWindow({ onClose }: Props) {
   const [managing, setManaging] = useState(false);
   const drafts = useRef<Record<string, string>>({});
   const [busy, setBusy] = useState<'sending' | 'uploading' | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const busyRef = useRef(false);
   const pendingRequests = useRef<Record<string, { id: string; text: string }>>({});
   const bottom = useRef<HTMLDivElement>(null);
@@ -34,6 +35,21 @@ export default function ChatWindow({ onClose }: Props) {
     const body = await response.json();
     if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : '无法加载会话');
     return body as RecentHistory;
+  }
+  async function loadEarlier() {
+    const sessionId = history?.session?.id;
+    const before = history?.messages[0]?.id;
+    if (!sessionId || !before || loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      const params = new URLSearchParams({ sessionId, before });
+      const response = await fetch('/api/ai-chat/history?' + params, { cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      const earlier: RecentHistory = await response.json();
+      setHistory(current => current?.session?.id === sessionId && current.messages[0]?.id === before
+        ? { ...current, messages: [...earlier.messages, ...current.messages], hasMore: earlier.hasMore } : current);
+    } catch { setError('更早的消息加载失败，请重试。'); }
+    finally { setLoadingEarlier(false); }
   }
   async function loadHistory(id?: string | null) {
     const next = await fetchHistory(id);
@@ -58,7 +74,8 @@ export default function ChatWindow({ onClose }: Props) {
       });
     return () => controller.abort();
   }, []);
-  useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }); }, [history, busy]);
+  const newestId = history?.messages.at(-1)?.id;
+  useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }); }, [newestId, busy]);
 
   async function createOrGetSession() {
     if (history?.session) return history.session;
@@ -161,7 +178,8 @@ export default function ChatWindow({ onClose }: Props) {
           </Stack> :
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">当前会话：{history.session.title}</Typography>
-            <MessageList messages={history.messages} hasMore={history.hasMore} sessionId={history.session.id} />
+            {history.hasMore && <Button disabled={loadingEarlier} onClick={() => void loadEarlier()}>加载更早的消息</Button>}
+            <MessageList messages={history.messages} sessionId={history.session.id} />
           </Stack>}
       {busy && <Typography variant="caption" color="text.secondary">{busy === 'sending' ? '正在等待 AI 回复…' : '正在上传附件…'}</Typography>}
       <div ref={bottom} />

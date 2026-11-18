@@ -1,6 +1,10 @@
-import { ConflictException, HttpException, Inject, Injectable } from '@nestjs/common';
+import { ConflictException, HttpException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ChatTurnRepository } from './chat-turn.repository.js';
 import { ModelService } from './providers/model.service.js';
+import { ToolRegistryService } from '../ai/tools/tool-registry.service.js';
+import type { ToolContext } from '../jwt-auth.guard.js';
+import { candidateTools } from './providers/chat-tools.js';
+import { toolTurnReply, type TurnReply } from './turn-reply.js';
 import { ModelError } from './providers/chat-model.types.js';
 import type { ModelMessage } from './providers/chat-model.types.js';
 import type { ChatMessageEntity } from './entities/chat-message.entity.js';
@@ -25,9 +29,33 @@ function modelContext(turns: SessionTurn[], text: string): ModelMessage[] {
 export class ChatTurnService {
   constructor(@Inject(ChatTurnRepository) private readonly turns:ChatTurnRepository,
     @Inject(AiSessionContextCache) private readonly memory: AiSessionContextCache,
+    @Inject(ToolRegistryService) private readonly tools: ToolRegistryService,
     @Inject(ModelService) private readonly model:ModelService) {}
 
-  async send(userId:string, sessionId:string, input:CreateChatTurnDto) {
+  private async answer(turns: SessionTurn[], text: string, context: ToolContext | undefined): Promise<TurnReply> {
+    if (/^(?:请|帮我|请帮我)?(?:查询|查|看看|看)(?:一下|一查)?(?:业务)?数据[。？！?!]*$/u.test(text.replace(/\s/g, ''))) {
+      const question = '你想查询公司、用户，还是查看 Dashboard 汇总指标？';
+      return { messageType: 'text', content: { text: question }, summary: question };
+    }
+    let names = candidateTools(text);
+    // 具名查询由注册中心统一执行并审计拒绝；开放式对话只向模型列出当前可发现的工具。
+    if (names.length > 1) {
+      try {
+        const available = context ? await this.tools.listAvailable(context) : [];
+        names = names.filter(name => available.some(meta => meta.name === name));
+      } catch (error) {
+        if (!(error instanceof ServiceUnavailableException)) throw error;
+        names = [];
+      }
+    }
+    const reply = await this.model.chat(modelContext(turns, text), names);
+    if ('tool' in reply) {
+      return toolTurnReply(await this.tools.execute(reply.tool, context, reply.args));
+    }
+    return { messageType: 'text', content: { ...reply }, summary: reply.text };
+  }
+
+  async send(userId:string, sessionId:string, input:CreateChatTurnDto, context: ToolContext | undefined) {
     return this.turns.withSessionLock(userId,sessionId,async (client, history)=>{
       const existing=await this.turns.findTurn(client,sessionId,input.requestId);
       if (existing) {
@@ -45,9 +73,9 @@ export class ChatTurnService {
       let assistantMessage: ChatMessageEntity;
       try {
         turns = history.status === 'active' ? await this.memory.read(key, history.turnIds, load) : await load();
-        const reply = await this.model.chat(modelContext(turns, input.text));
+        const reply = await this.answer(turns, input.text, context);
         assistantMessage = await this.turns.complete(client, started.turnId, sessionId, reply);
-        turns.push({ turnId: started.turnId, user: input.text, assistant: reply.text });
+        turns.push({ turnId: started.turnId, user: input.text, assistant: reply.summary });
       } catch(error) {
         const kind=error instanceof ModelError ? error.kind : 'internal';
         await this.turns.fail(client,started.turnId,kind);

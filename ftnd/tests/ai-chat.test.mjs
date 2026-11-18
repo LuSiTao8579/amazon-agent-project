@@ -71,3 +71,21 @@ test('公司页与聊天使用相同的人均年营收色阶，以原始值判�
   }
   assert.deepEqual(revenuePerEmployeeDisplay(null), { label: '不可计算', bgcolor: 'action.disabledBackground' });
 });
+
+test('历史恢复保留用户字段、两种图的全部数据点和组合报表，并剔除额外字段', () => {
+  const read = content => normalizeMessage({ ...base, messageType: content.resultType, content });
+  const users = structuredClone(examples.users);
+  users.data.items[0].privateField = 'secret';
+  assert.deepEqual(read(users).content.users, examples.users.data.items);
+  for (const [chartType, rows] of Object.entries({
+    yearlyGrowth: examples.report.data.yearlyGrowth, levelDistribution: examples.report.data.levelDistribution,
+  })) {
+    const chart = { ...examples.chart, data: { chartType, rows } };
+    assert.deepEqual(read(chart).content.chart, chart.data);
+  }
+  const report = structuredClone(examples.report);
+  report.data.levelDistribution[0].privateField = 'secret';
+  assert.deepEqual(read(report).content.report, examples.report.data);
+  delete report.data.yearlyGrowth[0].newCompanies;
+  assert.equal(read(report).type, 'unsupported');
+});

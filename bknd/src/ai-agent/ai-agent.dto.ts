@@ -38,6 +38,13 @@ export class ChatPageDto {
   pageSize = 20;
 }
 
+export class MessagePageDto extends ChatPageDto {
+  @ApiPropertyOptional({ type: String, description: 'latest 获取最新一页，消息 UUID 获取该消息之前的一页，结果按时间倒序排列' })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Matches(/^(?:latest|[a-fA-F0-9]{8}-(?:[a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12})$/)
+  cursor?: string;
+}
+
 export class ChatSessionResponseDto {
   @ApiProperty({ type: String, format: 'uuid' }) id: string;
   @ApiProperty({ type: String, format: 'uuid' }) userId: string;

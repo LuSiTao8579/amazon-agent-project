@@ -1,17 +1,17 @@
 import { Body, Controller, Delete, Get, Header, Inject, Param, ParseUUIDPipe, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { ChatAttachmentService, MAX_ATTACHMENT_BYTES } from './chat-attachment.service.js';
 import { dtoPipe } from '../common/list.dto.js';
-import { JwtAuthGuard } from '../jwt-auth.guard.js';
+import { JwtAuthGuard, type ToolRequest } from '../jwt-auth.guard.js';
 import type { PublicUser } from '../users/user.types.js';
 import { AiAgentService } from './ai-agent.service.js';
 import { ChatTurnService } from './chat-turn.service.js';
 import { CreateChatTurnDto, ChatTurnResponseDto } from './chat-turn.dto.js';
-import { ChatMessageResponseDto, ChatMessagesPageResponseDto, ChatPageDto, ChatSessionResponseDto, ChatSessionsPageResponseDto, CreateChatMessageDto, CreateChatSessionDto } from './ai-agent.dto.js';
+import { ChatMessageResponseDto, ChatMessagesPageResponseDto, MessagePageDto, ChatPageDto, ChatSessionResponseDto, ChatSessionsPageResponseDto, CreateChatMessageDto, CreateChatSessionDto } from './ai-agent.dto.js';
 
-type AuthenticatedRequest = Request & { user: PublicUser };
+type AuthenticatedRequest = ToolRequest & { user: PublicUser };
 
 @ApiTags('AI 会话')
 @ApiBearerAuth()
@@ -57,11 +57,11 @@ export class AiAgentController {
 
   @Get(':id/messages')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: '分页读取当前用户会话的消息（按先后顺序）' })
+  @ApiOperation({ summary: '分页读取当前用户会话的消息（默认按先后顺序，可按游标回看）' })
   @ApiNotFoundResponse({ description: '会话不存在或不属于当前用户' })
   @ApiOkResponse({ type: ChatMessagesPageResponseDto })
   listMessages(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string,
-    @Query(dtoPipe(ChatPageDto)) paging: ChatPageDto) {
+    @Query(dtoPipe(MessagePageDto)) paging: MessagePageDto) {
     return this.chats.listMessages(request.user.id, id, paging);
   }
 
@@ -107,6 +107,6 @@ export class AiAgentController {
   @ApiNotFoundResponse({ description: '会话不存在或不属于当前用户' })
   sendTurn(@Req() request: AuthenticatedRequest, @Param('id', new ParseUUIDPipe()) id: string,
     @Body(dtoPipe(CreateChatTurnDto)) input: CreateChatTurnDto) {
-    return this.turns.send(request.user.id, id, input);
+    return this.turns.send(request.user.id, id, input, request.toolContext);
   }
 }

@@ -63,3 +63,14 @@ describe('模型统一适配器', () => {
     await expect(model.chat(messages)).rejects.toMatchObject({kind:'timeout'});
   });
 });
+
+describe('模型工具提案校验', () => {
+  const call = (name = 'query_companies', args = '{}') => ({ type: 'function', function: { name, arguments: args } });
+  it.each([
+    [call('unregistered')], [call('query_users')], [call('query_companies', '{')],
+    [call('query_companies', 'null')], [call(), call()],
+  ])('拒绝非候选、格式错误或多个工具提案', async (...calls) => {
+    const { model } = setup('qwen', 200, { choices: [{ message: { content: '忽略', tool_calls: calls } }] });
+    await expect(model.chat(messages, ['query_companies'])).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+});

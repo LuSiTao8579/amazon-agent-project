@@ -12,7 +12,14 @@ import { PG_POOL } from '../src/database/database.module.js';
 import { UsersService } from '../src/users/users.service.js';
 import { PasswordHasher } from '../src/users/password-hasher.service.js';
 import { ModelService } from '../src/ai-agent/providers/model.service.js';
-import { ModelError } from '../src/ai-agent/providers/chat-model.types.js';
+import { ModelError, type ChatModel } from '../src/ai-agent/providers/chat-model.types.js';
+import { QwenAdapter } from '../src/ai-agent/providers/openai-compatible.adapter.js';
+import { CompaniesService } from '../src/companies/companies.service.js';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import type { DataSource } from 'typeorm';
+import { AI_DATA_SOURCE } from '../src/ai/ai.constants.js';
+import { AiAuditService } from '../src/ai/services/ai-audit.service.js';
+import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.entity.js';
 import { AiCacheService } from '../src/ai/cache/ai-cache.service.js';
 import { ChatTurnRepository } from '../src/ai-agent/chat-turn.repository.js';
 
@@ -26,7 +33,7 @@ describe('AI多轮对话 HTTP 与数据库', () => {
   const emails=[`turn-a-${randomUUID()}@example.test`,`turn-b-${randomUUID()}@example.test`];
   const sessions:string[]=[];
   const reply={provider:'qwen' as const,model:'fake',text:'模拟回复',finishReason:'stop'};
-  const chat=vi.fn(async (_messages:unknown[])=>reply);
+  const chat=vi.fn<ChatModel['chat']>(async () => reply);
   const key = (sessionId: string) => ({ kind: 'session', userId, sessionId }) as const;
   function send(session: string, text: string) {
     return request(app.getHttpServer()).post(`/ai-agent/sessions/${session}/turns`)
@@ -89,6 +96,90 @@ describe('AI多轮对话 HTTP 与数据库', () => {
     const history=await request(app.getHttpServer()).get(`/ai-agent/sessions/${session}/messages`).auth(token,{type:'bearer'}).expect(200);
     expect(history.body.items.map((m:{role:string})=>m.role)).toEqual(['user','assistant','user','assistant']);
     expect(history.body.items[0].turnStatus).toBe('completed');
+  });
+
+  it('聊天工具执行一次，历史保留数据库快照，缓存回源仅恢复摘要', async () => {
+    const session = await createSession();
+    const url = `/ai-agent/sessions/${session}/turns`;
+    const requestId = randomUUID();
+    const text = '查英国、等级 2 和 3 的公司，按公司名称排序，取前 10 家';
+    const companyCode = randomUUID();
+    const companyName = '000-step7-' + companyCode;
+    const requestTurn = () => request(app.getHttpServer()).post(url).auth(token, { type: 'bearer' })
+      .send({ requestId, text }).expect(201);
+    // 使用真实适配器，固定模型 HTTP 响应。权限、Service、消息表和去重均走生产入口。
+    function propose(name: string, args: object) {
+      const adapter = new QwenAdapter({ provider: 'qwen', model: 'fixture', apiKey: 'fixture', baseUrl: 'https://model.example' },
+        async (_url, init) => {
+          if (typeof init?.body !== 'string') throw new Error('模型请求缺少 JSON 正文');
+          const body = JSON.parse(init.body);
+          expect(body.tools.map((tool: { function: { name: string } }) => tool.function.name)).toContain(name);
+          return Response.json({ choices: [{ finish_reason: 'tool_calls', message: { content: null,
+            tool_calls: [{ type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }] });
+        });
+      chat.mockImplementationOnce((messages, tools) => adapter.chat(messages, tools));
+    }
+    const runner = app.get<DataSource>(getDataSourceToken(AI_DATA_SOURCE)).createQueryRunner();
+    await runner.startTransaction();
+    const records = runner.manager.getRepository(AiOperationAuditEntity);
+    const audit = new AiAuditService(records, app.get(UsersService));
+    const write = vi.spyOn(app.get(AiAuditService), 'recordToolExecution').mockImplementation(audit.recordToolExecution.bind(audit));
+    const list = vi.spyOn(app.get(CompaniesService), 'list');
+    try {
+      await pool.query(`INSERT INTO companies(company_code,company_name,level,country,city,founded_year,annual_revenue,employees)
+        VALUES ($1,$2,2,'UK','London',2001,1000,2)`, [companyCode, companyName]);
+      const args = { country: 'UK', levels: [2, 3], sortBy: 'companyName', sortOrder: 'asc', pageSize: 10 };
+      propose('query_companies', args);
+      const first = (await requestTurn()).body;
+      expect(list).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(args));
+      expect(first.assistantMessage).toMatchObject({ messageType: 'table', content: { code: 'OK', resultType: 'table',
+        data: { tableType: 'companies', items: expect.arrayContaining([expect.objectContaining({
+          companyCode, companyName, city: 'London', revenuePerEmployee: 500, employees: 2 })]) } } });
+      await pool.query('UPDATE companies SET city=$2 WHERE company_code=$1', [companyCode, 'Changed']);
+      const calls = chat.mock.calls.length;
+      const replay = (await requestTurn()).body;
+      expect(replay).toEqual(first);
+      expect(chat.mock.calls).toHaveLength(calls);
+      expect(list).toHaveBeenCalledTimes(1);
+      expect(await records.countBy({ userId, toolName: 'query_companies' })).toBe(1);
+      const history = await request(app.getHttpServer()).get(`/ai-agent/sessions/${session}/messages`)
+        .auth(token, { type: 'bearer' }).expect(200);
+      expect(history.body.items).toHaveLength(2);
+      expect(history.body.items[1].content).toEqual(first.assistantMessage.content);
+      await request(app.getHttpServer()).get(`/ai-agent/sessions/${session}/messages`)
+        .auth(otherToken, { type: 'bearer' }).expect(404);
+      const messagesUrl = `/ai-agent/sessions/${session}/messages`;
+      const latest = await request(app.getHttpServer()).get(messagesUrl).query({ cursor: 'latest', pageSize: 1 })
+        .auth(token, { type: 'bearer' }).expect(200);
+      expect(latest.body.items[0].id).toBe(first.assistantMessage.id);
+      expect(latest.body.hasMore).toBe(true);
+      const older = await request(app.getHttpServer()).get(messagesUrl).query({ cursor: first.assistantMessage.id })
+        .auth(token, { type: 'bearer' }).expect(200);
+      expect(older.body.items.map((item: { id: string }) => item.id)).toEqual([first.userMessage.id]);
+      await app.get(AiCacheService).invalidate(key(session));
+      await send(session, '继续');
+      expect(chat.mock.lastCall?.[0][1]).toEqual({ role: 'assistant', content: first.assistantMessage.content.contextSummary });
+      expect(JSON.stringify(chat.mock.lastCall?.[0])).not.toContain(companyName);
+      const beforeClarify = chat.mock.calls.length;
+      expect((await send(session, '查一下数据')).body.assistantMessage.content.text).toMatch(/公司.*用户/);
+      expect(chat.mock.calls).toHaveLength(beforeClarify);
+      expect(write).toHaveBeenCalledTimes(1);
+      propose('query_users', {});
+      expect((await send(session, '查用户')).body.assistantMessage.content.code).toBe('FORBIDDEN');
+      propose('query_companies', { userId, isAdmin: true });
+      expect((await send(session, '查公司')).body.assistantMessage.content.code).toBe('INVALID_ARGUMENTS');
+      expect(list).toHaveBeenCalledTimes(1);
+      propose('dashboard_metrics', {});
+      const report = (await send(session, '查看 Dashboard 指标')).body.assistantMessage;
+      expect(report).toMatchObject({ messageType: 'report', content: { resultType: 'report', data: {
+        summary: { companyCount: expect.any(Number) }, yearlyGrowth: expect.any(Array), levelDistribution: expect.any(Array) } } });
+    } finally {
+      list.mockRestore();
+      write.mockRestore();
+      await runner.rollbackTransaction();
+      await runner.release();
+      await pool.query('DELETE FROM companies WHERE company_code=$1', [companyCode]);
+    }
   });
 
   it('模型失败后保留用户消息和失败状态，不插入假回复', async ()=>{

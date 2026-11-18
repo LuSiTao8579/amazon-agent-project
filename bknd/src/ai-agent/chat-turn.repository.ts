@@ -1,10 +1,10 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import pg from 'pg';
-import { PG_POOL } from '../database/database.module.js';
+import { CHAT_LOCK_POOL } from '../database/database.module.js';
 import type { AiSessionStatus } from '../ai/ai.constants.js';
 import { SESSION_TURN_LIMIT, type SessionTurn } from '../ai/cache/ai-session-context.cache.js';
 import type { ChatMessageEntity } from './entities/chat-message.entity.js';
-import type { ModelReply } from './providers/chat-model.types.js';
+import type { TurnReply } from './turn-reply.js';
 
 type SessionHistory = { status: AiSessionStatus; turnIds: string[] };
 
@@ -14,7 +14,7 @@ const MESSAGE = 'id, session_id AS "sessionId", position, role, message_type AS 
 /** 连接级咨询锁覆盖模型请求，防止同一会话并发打乱上下文；不同会话可并行。 */
 @Injectable()
 export class ChatTurnRepository {
-  constructor(@Inject(PG_POOL) private readonly pool:pg.Pool) {}
+  constructor(@Inject(CHAT_LOCK_POOL) private readonly pool:pg.Pool) {}
 
   async withSessionLock<T>(userId:string, sessionId:string, work:(client:pg.PoolClient, history:SessionHistory)=>Promise<T>):Promise<T> {
     const client = await this.pool.connect();
@@ -73,22 +73,22 @@ export class ChatTurnRepository {
 
   async completedTurns(client: pg.PoolClient, userId: string, sessionId: string, ids: string[]): Promise<SessionTurn[]> {
     const { rows } = await client.query<SessionTurn>(`
-      SELECT t.id AS "turnId", u.content->>'text' AS "user", a.content->>'text' AS assistant
+      SELECT t.id AS "turnId", u.content->>'text' AS "user", COALESCE(a.content->>'contextSummary', a.content->>'text') AS assistant
       FROM ai_chat_turns t JOIN ai_chat_sessions s ON s.id=t.session_id
       JOIN ai_chat_messages u ON u.id=t.user_message_id AND u.session_id=s.id
       JOIN ai_chat_messages a ON a.id=t.assistant_message_id AND a.session_id=s.id
       WHERE s.id=$1 AND s.user_id=$2 AND s.deleted_at IS NULL AND t.status='completed'
-        AND t.id=ANY($3::uuid[]) AND u.content->>'text' IS NOT NULL AND a.content->>'text' IS NOT NULL
+        AND t.id=ANY($3::uuid[]) AND u.content->>'text' IS NOT NULL AND COALESCE(a.content->>'contextSummary', a.content->>'text') IS NOT NULL
       ORDER BY u.position`, [sessionId, userId, ids]);
     return rows;
   }
 
-  async complete(client:pg.PoolClient, turnId:string, sessionId:string, reply:ModelReply) {
+  async complete(client:pg.PoolClient, turnId:string, sessionId:string, reply:TurnReply) {
     await client.query('BEGIN');
     try {
       const a=await client.query<ChatMessageEntity>(`INSERT INTO ai_chat_messages(session_id,role,message_type,content)
-        VALUES ($1,'assistant','text',$2::jsonb) RETURNING ${MESSAGE}`,
-        [sessionId,JSON.stringify({text:reply.text,provider:reply.provider,model:reply.model,finishReason:reply.finishReason})]);
+        VALUES ($1,'assistant',$2,$3::jsonb) RETURNING ${MESSAGE}`,
+        [sessionId, reply.messageType, JSON.stringify(reply.content)]);
       const updated=await client.query("UPDATE ai_chat_turns SET status='completed',assistant_message_id=$2 WHERE id=$1 AND status='pending'",[turnId,a.rows[0].id]);
       if (updated.rowCount !== 1) throw new Error('对话状态已改变');
       await client.query('UPDATE ai_chat_sessions SET updated_at=now() WHERE id=$1',[sessionId]);

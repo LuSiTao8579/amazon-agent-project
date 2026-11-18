@@ -19,9 +19,12 @@ export async function GET(request: Request) {
     return { status: response.status, data: await response.json() as unknown };
   }
   try {
-    const selected = new URL(request.url).searchParams.get('sessionId');
+    const params = new URL(request.url).searchParams;
+    const selected = params.get('sessionId');
+    const before = params.get('before');
     const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
     if (selected !== null && !uuid.test(selected)) return json({ message: '会话编号无效' }, 400);
+    if (before !== null && (!selected || !uuid.test(before))) return json({ message: '历史消息游标无效' }, 400);
     let session: unknown;
     if (selected) {
       const result = await get(`/ai-agent/sessions/${selected}`);
@@ -39,20 +42,13 @@ export async function GET(request: Request) {
       !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(session.id) ||
       typeof session.title !== 'string') throw new Error('会话格式错误');
 
-    const messages: ChatMessage[] = [];
-    let hasMore = true;
-    // 防止一次请求无界读取；长会话保留在数据库中，后续分页功能可完整加载。
-    for (let page = 1; page <= 10 && hasMore; page++) {
-      const response = await get(`/ai-agent/sessions/${session.id}/messages?page=${page}&pageSize=100`);
-      if (response.status === 401) return json({ message: '登录已失效，请重新登录' }, 401);
-      if (response.status === 404) return json({ message: '会话不存在' }, 404);
-      if (!isRecord(response.data) || !Array.isArray(response.data.items) ||
-          typeof response.data.hasMore !== 'boolean') throw new Error('消息响应格式错误');
-      for (const row of response.data.items as unknown[]) {
-        messages.push(normalizeMessage(row));
-      }
-      hasMore = response.data.hasMore;
-    }
+    const response = await get(`/ai-agent/sessions/${session.id}/messages?pageSize=100&cursor=${before ?? 'latest'}`);
+    if (response.status === 401) return json({ message: '登录已失效，请重新登录' }, 401);
+    if (response.status === 404) return json({ message: '会话不存在' }, 404);
+    if (!isRecord(response.data) || !Array.isArray(response.data.items) ||
+      typeof response.data.hasMore !== 'boolean') throw new Error('消息响应格式错误');
+    const messages: ChatMessage[] = response.data.items.map(normalizeMessage).reverse();
+    const hasMore = response.data.hasMore;
     return json({ session: { id: session.id, title: session.title }, messages, hasMore });
   } catch {
     return json({ message: '无法加载会话，请确认后端服务已启动' }, 502);

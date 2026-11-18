@@ -51,6 +51,10 @@ export class ToolRegistryService implements OnModuleInit {
     return (await this.visible(entry ? [entry] : [], context))[0];
   }
 
+  listAvailable(context: ToolContext): Promise<ToolMetadata[]> {
+    return this.visible([...this.entries.values()], context);
+  }
+
   listByIntent(intent: ToolIntent, context: ToolContext): Promise<ToolMetadata[]> {
     return this.visible([...this.entries.values()].filter(({ meta }) => meta.intent === intent), context);
   }

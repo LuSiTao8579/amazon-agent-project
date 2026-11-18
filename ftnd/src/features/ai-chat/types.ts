@@ -1,4 +1,4 @@
-import type { CompanyRow } from '../../../../contracts/tool-result.d.ts';
+import type { CompanyRow, Dashboard, ToolOutput, UserRow } from '../../../../contracts/tool-result.d.ts';
 
 /** 每种消息用 type 区分，新增类型时由渲染器明确处理。 */
 type MessageBase = {
@@ -12,9 +12,9 @@ type MessageBase = {
 type DeferredContent = { title: string | null; summary?: string };
 export type ChatMessage = MessageBase & (
   | { type: 'text'; content: { text: string } }
-  | { type: 'table'; content: DeferredContent & { companies?: CompanyRow[] } }
-  | { type: 'chart'; content: DeferredContent }
-  | { type: 'report'; content: DeferredContent }
+  | { type: 'table'; content: DeferredContent & { companies?: CompanyRow[]; users?: UserRow[] } }
+  | { type: 'chart'; content: DeferredContent & { chart?: Extract<ToolOutput, { resultType: 'chart' }>['data'] } }
+  | { type: 'report'; content: DeferredContent & { report?: Dashboard } }
   | { type: 'confirmation'; content: DeferredContent }
   | { type: 'tool-error'; content: { message: string } }
   | { type: 'unsupported'; content: { reason: string } }

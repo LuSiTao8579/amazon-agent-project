@@ -50,7 +50,7 @@ export class ChatRepository {
     return rows[0] ?? null;
   }
 
-  async listMessages(userId: string, sessionId: string, limit = 101, offset = 0): Promise<ChatMessageEntity[]> {
+  async listMessages(userId: string, sessionId: string, limit = 101, offset = 0, cursor?: string): Promise<ChatMessageEntity[]> {
     // 读取同样带user_id条件，不能只凭sessionId访问别人的内容。
     const { rows } = await this.pool.query<ChatMessageEntity>(`
       SELECT m.id, m.session_id AS "sessionId", m.position, m.role,
@@ -60,7 +60,8 @@ export class ChatRepository {
           FROM ai_chat_attachments a WHERE a.message_id=m.id), '[]'::json) AS attachments
       FROM ai_chat_messages m JOIN ai_chat_sessions s ON s.id = m.session_id
       LEFT JOIN ai_chat_turns t ON t.user_message_id = m.id
-      WHERE s.id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL ORDER BY m.position LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset]);
+      WHERE s.id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL AND ($5::uuid IS NULL OR m.position < (SELECT position FROM ai_chat_messages WHERE session_id=$1 AND id=$5))
+      ORDER BY m.position ${cursor ? 'DESC' : 'ASC'} LIMIT $3 OFFSET $4`, [sessionId, userId, limit, offset, cursor === 'latest' ? null : cursor ?? null]);
     return rows;
   }
 }

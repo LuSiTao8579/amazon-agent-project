@@ -1,4 +1,4 @@
-import type { CompanyRow, ToolErrorCode } from '../../../../contracts/tool-result.d.ts';
+import type { CompanyRow, ToolErrorCode, UserRow } from '../../../../contracts/tool-result.d.ts';
 import type { ChatMessage } from './types';
 import { MAX_ATTACHMENT_BYTES } from './upload-policy.ts';
 
@@ -23,6 +23,43 @@ function companyRows(items: unknown[]): CompanyRow[] | null {
   }
   return rows;
 }
+
+function userRows(items: unknown[]): UserRow[] | null {
+  const users: UserRow[] = [];
+  for (const item of items) {
+    if (!isRecord(item)) return null;
+    const { name, email, role, status } = item;
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof role !== 'string' ||
+      (status !== 'active' && status !== 'inactive')) return null;
+    users.push({ name, email, role, status });
+  }
+  return users;
+}
+
+// 对历史图表只读取协议中的数值列，其他字段不进入浏览器。
+function numericFields<K extends string>(value: unknown, keys: readonly K[]): Record<K, number> | null {
+  if (!isRecord(value)) return null;
+  const result = {} as Record<K, number>;
+  for (const key of keys) {
+    const field = value[key];
+    if (typeof field !== 'number' || !Number.isFinite(field)) return null;
+    result[key] = field;
+  }
+  return result;
+}
+
+function numericRows<K extends string>(value: unknown, keys: readonly K[]) {
+  if (!Array.isArray(value)) return null;
+  const rows: Record<K, number>[] = [];
+  for (const item of value) {
+    const row = numericFields(item, keys);
+    if (!row) return null;
+    rows.push(row);
+  }
+  return rows;
+}
+const levelFields = ['level', 'count', 'percentage'] as const;
+const yearFields = ['year', 'newCompanies', 'cumulativeCompanies'] as const;
 
 const toolErrors: Record<ToolErrorCode, true> = {
   INVALID_ARGUMENTS: true, UNAUTHENTICATED: true, FORBIDDEN: true, TOOL_UNAVAILABLE: true, EXECUTION_FAILED: true,
@@ -71,17 +108,30 @@ export function normalizeMessage(row: unknown): ChatMessage {
         const companies = companyRows(items);
         return companies ? { ...base, type: 'table', content: { title, summary, companies } } : invalid;
       }
+      if (tableType === 'users' && items.length > 0) {
+        const users = userRows(items);
+        return users ? { ...base, type: 'table', content: { title, summary, users } } : invalid;
+      }
       return { ...base, type: 'table', content: { title, summary } };
     }
     if (resultType === 'chart' && Array.isArray(data.rows)) {
-      const title = data.chartType === 'yearlyGrowth' ? '公司成立年份累计趋势' :
-        data.chartType === 'levelDistribution' ? '公司等级分布' : null;
-      if (title) return { ...base, type: 'chart', content: { title, summary: `共 ${data.rows.length} 个数据点。` } };
+      const summary = `共 ${data.rows.length} 个数据点。`;
+      if (data.chartType === 'yearlyGrowth') {
+        const rows = numericRows(data.rows, yearFields);
+        if (rows) return { ...base, type: 'chart', content: { title: '公司成立年份累计趋势', summary, chart: { chartType: data.chartType, rows } } };
+      }
+      if (data.chartType === 'levelDistribution') {
+        const rows = numericRows(data.rows, levelFields);
+        if (rows) return { ...base, type: 'chart', content: { title: '公司等级分布', summary, chart: { chartType: data.chartType, rows } } };
+      }
     }
-    if (resultType === 'report' && isRecord(data.summary) && Array.isArray(data.levelDistribution) && Array.isArray(data.yearlyGrowth)) {
-      const count = data.summary.companyCount;
-      if (typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
-        return { ...base, type: 'report', content: { title: 'Dashboard', summary: `统计范围内共有 ${count} 家公司。` } };
+    if (resultType === 'report') {
+      const summary = numericFields(data.summary, ['companyCount', 'totalRevenue', 'countryCount', 'employeeCount']);
+      const levelDistribution = numericRows(data.levelDistribution, levelFields);
+      const yearlyGrowth = numericRows(data.yearlyGrowth, yearFields);
+      if (summary && Number.isSafeInteger(summary.companyCount) && summary.companyCount >= 0 && levelDistribution && yearlyGrowth)
+        return { ...base, type: 'report', content: { title: 'Dashboard', summary: `统计范围内共有 ${summary.companyCount} 家公司。`,
+          report: { summary, levelDistribution, yearlyGrowth } } };
     }
     return invalid;
   }
