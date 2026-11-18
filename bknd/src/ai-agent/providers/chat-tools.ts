@@ -1,4 +1,4 @@
-import { DASHBOARD_VIEWS } from '../../dashboard/dashboard.dto.js';
+import { DASHBOARD_CHARTS, DASHBOARD_VIEWS } from '../../dashboard/dashboard.dto.js';
 import { COMPANY_SORT_COLUMNS } from '../../companies/company.dto.js';
 import { USER_ROLES, USER_SORT_COLUMNS, USER_STATUSES } from '../../users/user-management.dto.js';
 
@@ -30,6 +30,8 @@ const schemas = {
       foundedYearFrom: { ...year, description: '成立年份下限，含当年' },
       foundedYearTo: { ...year, description: '成立年份上限，含当年。单一年份用相同上下限' },
       country: { type: 'string', description: '完整国家名称，英国使用 UK' }, levels,
+      charts: { type: 'array', items: { type: 'string', enum: DASHBOARD_CHARTS }, uniqueItems: true,
+        description: '仅用于 report。只要指标卡传 []；指标卡加指定图传该图名称；完整看板省略。' },
       view: { type: 'string', enum: DASHBOARD_VIEWS, description: '只看等级占比选 levelDistribution；只看成立年份累计趋势选 yearlyGrowth；综合指标或多图选 report（默认）' },
     },
   },

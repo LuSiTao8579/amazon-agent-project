@@ -235,6 +235,15 @@ describe('AI多轮对话 HTTP 与数据库', () => {
           .auth(token, { type: 'bearer' }).query({ cursor: 'latest', pageSize: 1 }).expect(200);
         expect(history.body.items[0].content).toEqual(chart.content);
       }
+      for (const charts of [[], ['yearlyGrowth'], ['levelDistribution']] as const) {
+        const report = await ask('查看看板指标和指定的图', { ...filters, view: 'report', charts });
+        const requested = Object.fromEntries(charts.map(name => [name, expected[name]]));
+        expect(report.messageType).toBe('report');
+        expect(report.content.data).toEqual({ summary: expected.summary, ...requested });
+      }
+      for (const bad of [{ view: 'yearlyGrowth', charts: [] }, { charts: ['other'] }, { charts: null }]) {
+        expect((await ask('查 Dashboard 指标', bad)).content.code).toBe('INVALID_ARGUMENTS');
+      }
       const empty = await ask('统计没有匹配公司的看板', { ...filters, levels: [99] });
       expect(empty.content.data).toEqual({ summary: { companyCount: 0, totalRevenue: 0, countryCount: 0, employeeCount: 0 },
         levelDistribution: [], yearlyGrowth: [] });

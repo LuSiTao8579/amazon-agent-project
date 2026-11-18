@@ -1,17 +1,29 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, IconButton, Paper, Stack, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, Paper, Stack, Typography } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import type { RecentHistory } from '../types';
 import MessageList from './message-list';
+import ChatError from './chat-error';
 import ChatInput from './chat-input';
 import SessionManager from './session-manager';
 import { ATTACHMENT_EXTENSIONS, MAX_ATTACHMENT_BYTES } from '../upload-policy';
 
 type Props = { onClose: () => void };
+
+const selectedKey = 'ai-chat-selected-session';
+function selectedSession() { try { return sessionStorage.getItem(selectedKey); } catch { return null; } }
+function rememberSession(id: string | null) { try { if (id) sessionStorage.setItem(selectedKey, id); else sessionStorage.removeItem(selectedKey); } catch { /* storage may be unavailable */ } }
+async function fetchHistory(id?: string | null, signal?: AbortSignal): Promise<RecentHistory> {
+  const response = await fetch('/api/ai-chat/history' + (id ? `?sessionId=${encodeURIComponent(id)}` : ''), { cache: 'no-store', signal });
+  if (response.status === 404 && id) return fetchHistory(null, signal);
+  const body = await response.json();
+  if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : '无法加载会话');
+  return body as RecentHistory;
+}
 
 /** 非模态浮窗：用户仍可切换工作台页面；Escape 和关闭按钮都可以关闭。 */
 export default function ChatWindow({ onClose }: Props) {
@@ -26,16 +38,6 @@ export default function ChatWindow({ onClose }: Props) {
   const pendingRequests = useRef<Record<string, { id: string; text: string }>>({});
   const bottom = useRef<HTMLDivElement>(null);
 
-  const selectedKey = 'ai-chat-selected-session';
-  function selectedSession() { try { return sessionStorage.getItem(selectedKey); } catch { return null; } }
-  function rememberSession(id: string | null) { try { if (id) sessionStorage.setItem(selectedKey, id); else sessionStorage.removeItem(selectedKey); } catch { /* storage may be unavailable */ } }
-  async function fetchHistory(id?: string | null, signal?: AbortSignal): Promise<RecentHistory> {
-    const response = await fetch('/api/ai-chat/history' + (id ? `?sessionId=${encodeURIComponent(id)}` : ''), { cache: 'no-store', signal });
-    if (response.status === 404 && id) return fetchHistory(null, signal);
-    const body = await response.json();
-    if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : '无法加载会话');
-    return body as RecentHistory;
-  }
   async function loadEarlier() {
     const sessionId = history?.session?.id;
     const before = history?.messages[0]?.id;
@@ -59,19 +61,12 @@ export default function ChatWindow({ onClose }: Props) {
   useEffect(() => {
     const controller = new AbortController();
     const id = selectedSession();
-    fetch('/api/ai-chat/history' + (id ? `?sessionId=${encodeURIComponent(id)}` : ''), { cache: 'no-store', signal: controller.signal })
-      .then(async response => {
-        if (response.status === 404 && id) {
-          const fallback = await fetch('/api/ai-chat/history', { cache: 'no-store', signal: controller.signal });
-          if (!fallback.ok) throw new Error('无法加载会话');
-          return await fallback.json() as RecentHistory;
-        }
-        const body = await response.json();
-        if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : '无法加载会话');
-        return body as RecentHistory;
-      }).then(next => { setHistory(next); rememberSession(next.session?.id ?? null); }).catch(reason => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '无法加载会话');
-      });
+    fetchHistory(id, controller.signal).then(next => {
+      if (controller.signal.aborted) return;
+      setHistory(next); rememberSession(next.session?.id ?? null);
+    }).catch(reason => {
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '无法加载会话');
+    });
     return () => controller.abort();
   }, []);
   const newestId = history?.messages.at(-1)?.id;
@@ -184,7 +179,7 @@ export default function ChatWindow({ onClose }: Props) {
       {busy && <Typography variant="caption" color="text.secondary">{busy === 'sending' ? '正在等待 AI 回复…' : '正在上传附件…'}</Typography>}
       <div ref={bottom} />
     </Box>
-    {error && <Alert severity="error" sx={{ mx: 1.5, my: 0.5 }}>{error}</Alert>}
+    {error && <ChatError sx={{ mx: 1.5, my: 0.5 }}>{error}</ChatError>}
     <ChatInput text={draft} onText={setDraft} onSend={send} onFile={upload} busy={Boolean(busy)} disabled={!history} />
     </> }
   </Paper>;

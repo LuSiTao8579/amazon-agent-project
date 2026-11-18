@@ -43,10 +43,15 @@ export class DashboardMetricsTool extends BaseTool<DashboardToolDto, DashboardOu
   readonly inputDto = DashboardToolDto;
   constructor(@Inject(DashboardService) private readonly dashboard: DashboardService) { super(); }
 
-  protected async run(_context: ToolContext, { view, ...filters }: DashboardToolDto): Promise<DashboardOutput> {
+  protected async run(_context: ToolContext, { view, charts, ...filters }: DashboardToolDto): Promise<DashboardOutput> {
     const data = await this.dashboard.getDashboard(filters);
     if (view === 'levelDistribution') return { resultType: 'chart', data: { chartType: view, rows: data.levelDistribution } };
     if (view === 'yearlyGrowth') return { resultType: 'chart', data: { chartType: view, rows: data.yearlyGrowth } };
-    return { resultType: 'report', data };
+    if (!charts) return { resultType: 'report', data };
+    return { resultType: 'report', data: {
+      summary: data.summary,
+      ...(charts.includes('levelDistribution') && { levelDistribution: data.levelDistribution }),
+      ...(charts.includes('yearlyGrowth') && { yearlyGrowth: data.yearlyGrowth }),
+    } };
   }
 }

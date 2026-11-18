@@ -24,6 +24,7 @@ export function invalidToolArgs(errors: ValidationError[]): BadRequestException 
   const hints: Record<string, string> = {
     page: '页码须为 1 至 1000000 的整数。', pageSize: '每页条数须为 1 至 100 的整数。',
     foundedYearFrom: '起始年份须为 1 至 9999 的整数。', foundedYearTo: '结束年份须为 1 至 9999 的整数。',
+    charts: '综合报表可选择等级占比和成立年份趋势，每种图最多选一次。',
     view: '请选择综合报表、等级占比或成立年份趋势。', sortBy: '该查询不支持所选排序字段。', sortOrder: '排序方向须为 asc 或 desc。',
     roles: '请选择有效岗位。', status: '账号状态须为 active 或 inactive。', levels: '请选择有效的公司等级。', search: '搜索关键词须为不超过 100 字的文本。',
   };

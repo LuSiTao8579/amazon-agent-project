@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
+import { Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
   IconButton, List, ListItem, ListItemButton, ListItemText, Stack, TextField, Typography } from '@mui/material';
+import ChatError from './chat-error';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 type Session = { id: string; title: string; updatedAt: string | null };
@@ -65,7 +66,7 @@ export default function SessionManager({ activeId, onSelect, onDeleted, onClose 
       <Stack direction="row" spacing={1}><Button onClick={() => setCreating(true)} disabled={working}>新建会话</Button>
         <Button onClick={onClose} disabled={working}>返回聊天</Button></Stack>
     </Stack>
-    {error && <Alert severity="error" sx={{ mx: 2 }}>{error}</Alert>}
+    {error && <ChatError sx={{ mx: 2 }}>{error}</ChatError>}
     <Box sx={{ flex: 1, overflowY: 'auto', px: 1 }}>
       {loading ? <CircularProgress aria-label="加载会话列表" size={24} /> : items.length === 0 ?
         <Typography color="text.secondary" sx={{ p: 2 }}>暂无会话，点击新建会话开始。</Typography> :
@@ -82,14 +83,14 @@ export default function SessionManager({ activeId, onSelect, onDeleted, onClose 
         <DialogContentText>为会话取一个名称，留空时使用“新会话”。</DialogContentText>
         <TextField autoFocus fullWidth margin="dense" label="会话名称" value={title} onChange={e => setTitle(e.target.value)}
           slotProps={{ htmlInput: { maxLength: 200 } }} disabled={working} />
-        {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
+        {error && <ChatError sx={{ mt: 1 }}>{error}</ChatError>}
       </DialogContent><DialogActions><Button onClick={() => setCreating(false)} disabled={working}>取消</Button>
         <Button onClick={() => void create()} disabled={working}>创建</Button></DialogActions>
     </Dialog>
     <Dialog onKeyDown={event => event.stopPropagation()} open={Boolean(toDelete)} onClose={() => { if (!working) setToDelete(null); }} fullWidth maxWidth="xs">
       <DialogTitle>删除会话？</DialogTitle><DialogContent><DialogContentText>
         “{toDelete?.title}”将从会话列表中隐藏，其消息和附件也无法在正常界面访问。记录暂时保留在数据库中，当前没有自助恢复入口。
-      </DialogContentText>{error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}</DialogContent>
+      </DialogContentText>{error && <ChatError sx={{ mt: 1 }}>{error}</ChatError>}</DialogContent>
       <DialogActions><Button onClick={() => setToDelete(null)} disabled={working}>取消</Button>
         <Button color="error" onClick={() => { if (toDelete) void remove(toDelete); }} disabled={working}>确认删除</Button></DialogActions>
     </Dialog>

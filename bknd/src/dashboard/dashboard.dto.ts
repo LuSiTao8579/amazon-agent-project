@@ -1,6 +1,6 @@
 import { ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { Transform, type TransformFnParams } from 'class-transformer';
-import { IsIn, IsInt, Max, Min, ValidateBy, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsIn, IsInt, Max, Min, ValidateBy, ValidateIf } from 'class-validator';
 import { CompanyListDto } from '../companies/company.dto.js';
 
 function parseYear({ value }: TransformFnParams): unknown {
@@ -32,11 +32,24 @@ export class DashboardFiltersDto extends PickType(CompanyListDto, ['country', 'l
   foundedYearTo?: number;
 }
 
-export const DASHBOARD_VIEWS = ['report', 'levelDistribution', 'yearlyGrowth'] as const;
+export const DASHBOARD_CHARTS = ['levelDistribution', 'yearlyGrowth'] as const;
+export const DASHBOARD_VIEWS = ['report', ...DASHBOARD_CHARTS] as const;
 
 export class DashboardToolDto extends DashboardFiltersDto {
   @ApiPropertyOptional({ enum: DASHBOARD_VIEWS, default: 'report' })
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(DASHBOARD_VIEWS)
   view?: (typeof DASHBOARD_VIEWS)[number];
+
+  @ApiPropertyOptional({ enum: DASHBOARD_CHARTS, isArray: true, description: '综合报表附带的图表，空数组仅显示指标卡' })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(DASHBOARD_CHARTS.length)
+  @IsIn(DASHBOARD_CHARTS, { each: true })
+  @ValidateBy({ name: 'reportCharts', validator: { validate(_value, args) {
+    const view = (args?.object as DashboardToolDto | undefined)?.view;
+    return view === undefined || view === 'report';
+  } } })
+  charts?: (typeof DASHBOARD_CHARTS)[number][];
 }

@@ -61,6 +61,23 @@ function numericRows<K extends string>(value: unknown, keys: readonly K[]) {
 const levelFields = ['level', 'count', 'percentage'] as const;
 const yearFields = ['year', 'newCompanies', 'cumulativeCompanies'] as const;
 
+function isCount(value: number): boolean { return Number.isSafeInteger(value) && value >= 0; }
+
+function readLevels(value: unknown) {
+  const rows = numericRows(value, levelFields);
+  if (!rows || !rows.every(row => Number.isInteger(row.level) && row.level > 0 && isCount(row.count) &&
+    row.percentage >= 0 && row.percentage <= 100) || new Set(rows.map(row => row.level)).size !== rows.length) return null;
+  return rows;
+}
+
+function readYears(value: unknown) {
+  const rows = numericRows(value, yearFields);
+  if (!rows || !rows.every((row, index) => Number.isInteger(row.year) && row.year >= 1 && row.year <= 9999 &&
+    isCount(row.newCompanies) && isCount(row.cumulativeCompanies) && row.cumulativeCompanies >= row.newCompanies &&
+    (index === 0 || row.year > rows[index - 1].year))) return null;
+  return rows;
+}
+
 const toolErrors: Record<ToolErrorCode, true> = {
   INVALID_ARGUMENTS: true, UNAUTHENTICATED: true, FORBIDDEN: true, TOOL_UNAVAILABLE: true, EXECUTION_FAILED: true,
 };
@@ -85,7 +102,7 @@ export function normalizeMessage(row: unknown): ChatMessage {
   }).slice(0, 10) : [];
   const withAttachments = attachments.length ? { ...base, attachments } : base;
   const content = isRecord(row.content) ? row.content : {};
-  if (row.role === 'assistant' && 'code' in content) {
+  if (row.role === 'assistant' && ('code' in content || 'resultType' in content)) {
     const invalid = { ...base, type: 'unsupported', content: { reason: '工具结果格式不正确，暂时无法显示。' } } as const;
     const { data, resultType, code, message } = content;
     if (resultType !== row.messageType || typeof message !== 'string' || !message.trim()) return invalid;
@@ -101,37 +118,37 @@ export function normalizeMessage(row: unknown): ChatMessage {
         typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0 ||
         typeof page !== 'number' || !Number.isSafeInteger(page) || page < 1 ||
         typeof pageSize !== 'number' || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100 ||
-        items.length > pageSize || items.length > total) return invalid;
+        items.length > pageSize || items.length > Math.max(0, total - (page - 1) * pageSize)) return invalid;
       const title = tableType === 'users' ? '用户表' : '公司表';
-      const summary = total === 0 ? '没有符合条件的记录。' : `共 ${total} 条，第 ${page} 页显示 ${items.length} 条。`;
-      if (tableType === 'companies' && items.length > 0) {
+      const summary = total === 0 ? '没有符合条件的记录。' : `共 ${total} 条，第 ${page} 页显示 ${items.length} 条，每页 ${pageSize} 条。`;
+      const paging = { title, summary, total, page, pageSize };
+      if (tableType === 'companies') {
         const companies = companyRows(items);
-        return companies ? { ...base, type: 'table', content: { title, summary, companies } } : invalid;
+        return companies ? { ...base, type: 'table', content: { ...paging, tableType, companies } } : invalid;
       }
-      if (tableType === 'users' && items.length > 0) {
-        const users = userRows(items);
-        return users ? { ...base, type: 'table', content: { title, summary, users } } : invalid;
-      }
-      return { ...base, type: 'table', content: { title, summary } };
+      const users = userRows(items);
+      return users ? { ...base, type: 'table', content: { ...paging, tableType, users } } : invalid;
     }
     if (resultType === 'chart' && Array.isArray(data.rows)) {
       const summary = `共 ${data.rows.length} 个数据点。`;
       if (data.chartType === 'yearlyGrowth') {
-        const rows = numericRows(data.rows, yearFields);
+        const rows = readYears(data.rows);
         if (rows) return { ...base, type: 'chart', content: { title: '公司成立年份累计趋势', summary, chart: { chartType: data.chartType, rows } } };
       }
       if (data.chartType === 'levelDistribution') {
-        const rows = numericRows(data.rows, levelFields);
+        const rows = readLevels(data.rows);
         if (rows) return { ...base, type: 'chart', content: { title: '公司等级分布', summary, chart: { chartType: data.chartType, rows } } };
       }
     }
     if (resultType === 'report') {
       const summary = numericFields(data.summary, ['companyCount', 'totalRevenue', 'countryCount', 'employeeCount']);
-      const levelDistribution = numericRows(data.levelDistribution, levelFields);
-      const yearlyGrowth = numericRows(data.yearlyGrowth, yearFields);
-      if (summary && Number.isSafeInteger(summary.companyCount) && summary.companyCount >= 0 && levelDistribution && yearlyGrowth)
-        return { ...base, type: 'report', content: { title: 'Dashboard', summary: `统计范围内共有 ${summary.companyCount} 家公司。`,
-          report: { summary, levelDistribution, yearlyGrowth } } };
+      if (!summary || ![summary.companyCount, summary.countryCount, summary.employeeCount].every(isCount) ||
+          summary.totalRevenue < 0) return invalid;
+      const levelDistribution = data.levelDistribution === undefined ? undefined : readLevels(data.levelDistribution);
+      const yearlyGrowth = data.yearlyGrowth === undefined ? undefined : readYears(data.yearlyGrowth);
+      if (levelDistribution === null || yearlyGrowth === null) return invalid;
+      return { ...base, type: 'report', content: { title: 'Dashboard', summary: `统计范围内共有 ${summary.companyCount} 家公司。`,
+        report: { summary, ...(levelDistribution && { levelDistribution }), ...(yearlyGrowth && { yearlyGrowth }) } } };
     }
     return invalid;
   }
@@ -142,7 +159,8 @@ export function normalizeMessage(row: unknown): ChatMessage {
   }
   if (row.messageType === 'table' || row.messageType === 'chart' || row.messageType === 'report' || row.messageType === 'confirmation') {
     const title = typeof content.title === 'string' ? content.title.slice(0, 100) : null;
-    return { ...base, type: row.messageType, content: { title } };
+    if (row.messageType === 'confirmation') return { ...base, type: 'confirmation', content: { title } };
+    return { ...base, type: 'legacy', content: { title, kind: row.messageType } };
   }
   return { ...base, type: 'unsupported', content: { reason: '暂不支持显示此类型的消息。' } };
 }

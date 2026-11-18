@@ -13,11 +13,13 @@ export type Dashboard = {
   yearlyGrowth: Years;
 };
 
+export type DashboardReport = Pick<Dashboard, 'summary'> & Partial<Pick<Dashboard, 'levelDistribution' | 'yearlyGrowth'>>;
+
 export type ToolOutput =
   | { resultType: 'text'; data: { text: string } }
   | { resultType: 'table'; data: ({ tableType: 'users' } & Page<UserRow>) | ({ tableType: 'companies' } & Page<CompanyRow>) }
   | { resultType: 'chart'; data: { chartType: 'levelDistribution'; rows: Levels } | { chartType: 'yearlyGrowth'; rows: Years } }
-  | { resultType: 'report'; data: Dashboard };
+  | { resultType: 'report'; data: DashboardReport };
 
 export type ToolErrorCode = 'INVALID_ARGUMENTS' | 'UNAUTHENTICATED' | 'FORBIDDEN' | 'TOOL_UNAVAILABLE' | 'EXECUTION_FAILED';
 export type ToolFailure = { code: ToolErrorCode; data: null; message: string; resultType: 'text' };
