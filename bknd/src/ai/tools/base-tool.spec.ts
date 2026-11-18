@@ -122,7 +122,7 @@ describe('工具身份与业务参数', () => {
     expect(companies.list).not.toHaveBeenCalled();
     expect(await registry.execute(company!.name, context, {})).toMatchObject({ code: 'OK', data: { tableType: 'companies' } });
     expect(companies.list).toHaveBeenCalledTimes(1);
-    expect(await registry.execute('dashboard_metrics', context, { country: 'UK' })).toMatchObject({ code: 'INVALID_ARGUMENTS' });
+    expect(await registry.execute('dashboard_metrics', context, { foundedYearFrom: 2020, foundedYearTo: 2019 })).toMatchObject({ code: 'INVALID_ARGUMENTS' });
     expect(dashboard.getDashboard).not.toHaveBeenCalled();
     expect(await registry.execute('dashboard_metrics', context, {})).toMatchObject({ code: 'OK', resultType: 'report' });
     expect(await registry.execute('unknown', context, {})).toEqual(toolFailure('TOOL_UNAVAILABLE'));

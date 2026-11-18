@@ -182,6 +182,78 @@ describe('AI多轮对话 HTTP 与数据库', () => {
     }
   });
 
+  it('Dashboard 综合报表与两种单图共用成立年份、国家、等级筛选及历史快照', async () => {
+    const session = await createSession();
+    const country = 'step9-' + randomUUID();
+    const filters = { country: ' ' + country.toUpperCase() + ' ', levels: [2, 3], foundedYearFrom: 2018, foundedYearTo: 2020 };
+    const fixtures = [
+      [country, 2, 2018, 1000, 8], [country.toUpperCase(), 2, 2020, 600.25, 3], [country, 3, 2020, 0, 0],
+      [country, 2, 2017, 1234, 1], [country, 3, 2021, 2500, 5], [country, 4, 2019, 100, 2],
+      ['other-' + country, 2, 2019, 90, 1],
+    ] as const;
+    const codes = fixtures.map((_, index) => country + '-' + index);
+    const expected = {
+      summary: { companyCount: 3, totalRevenue: 1600.25, countryCount: 1, employeeCount: 11 },
+      levelDistribution: [{ level: 2, count: 2, percentage: 200 / 3 }, { level: 3, count: 1, percentage: 100 / 3 }],
+      yearlyGrowth: [
+        { year: 2018, newCompanies: 1, cumulativeCompanies: 1 }, { year: 2019, newCompanies: 0, cumulativeCompanies: 1 },
+        { year: 2020, newCompanies: 2, cumulativeCompanies: 3 },
+      ],
+    };
+    function dashboard(query: Record<string, unknown> = {}) {
+      return request(app.getHttpServer()).get('/dashboard').auth(token, { type: 'bearer' }).query(query);
+    }
+    async function ask(text: string, args: Record<string, unknown>) {
+      chat.mockImplementationOnce(async (_messages, names) => {
+        expect(names).toContain('dashboard_metrics');
+        return { tool: 'dashboard_metrics', args };
+      });
+      return (await send(session, text)).body.assistantMessage;
+    }
+    const audit = vi.spyOn(app.get(AiAuditService), 'recordToolExecution').mockResolvedValue();
+    try {
+      for (const [index, row] of fixtures.entries()) {
+        await pool.query(`INSERT INTO companies(company_code,company_name,city,country,level,founded_year,annual_revenue,employees)
+          VALUES ($1,$1,'test',$2,$3,$4,$5,$6)`, [codes[index], ...row]);
+      }
+      const all = (await dashboard().expect(200)).body;
+      const baseline = await pool.query(`SELECT count(*)::int AS "companyCount",
+        sum(annual_revenue)::float8 AS "totalRevenue", count(DISTINCT lower(btrim(country)))::int AS "countryCount",
+        sum(employees)::float8 AS "employeeCount" FROM companies`);
+      expect(all.summary).toEqual(baseline.rows[0]);
+      expect(all.levelDistribution.reduce((sum: number, row: { count: number }) => sum + row.count, 0)).toBe(all.summary.companyCount);
+      expect(all.yearlyGrowth.at(-1).cumulativeCompanies).toBe(all.summary.companyCount);
+      expect((await ask('查看完整看板', {})).content.data).toEqual(all);
+      const api = await dashboard({ ...filters, levels: '2,3' }).expect(200);
+      expect(api.body).toEqual(expected);
+      expect((await ask('查看筛选后的看板指标和两张图', filters)).content).toMatchObject({ code: 'OK', resultType: 'report', data: expected });
+      for (const [view, text] of [['levelDistribution', '查公司的等级分布'], ['yearlyGrowth', '查公司的成立年份累计曲线']] as const) {
+        const chart = await ask(text, { ...filters, view });
+        expect(chart).toMatchObject({ messageType: 'chart', content: { code: 'OK', resultType: 'chart' } });
+        expect(chart.content.data).toEqual({ chartType: view, rows: expected[view] });
+        const history = await request(app.getHttpServer()).get(`/ai-agent/sessions/${session}/messages`)
+          .auth(token, { type: 'bearer' }).query({ cursor: 'latest', pageSize: 1 }).expect(200);
+        expect(history.body.items[0].content).toEqual(chart.content);
+      }
+      const empty = await ask('统计没有匹配公司的看板', { ...filters, levels: [99] });
+      expect(empty.content.data).toEqual({ summary: { companyCount: 0, totalRevenue: 0, countryCount: 0, employeeCount: 0 },
+        levelDistribution: [], yearlyGrowth: [] });
+      for (const [bounds, count] of [[{ foundedYearFrom: 2020 }, 3], [{ foundedYearTo: 2018 }, 2],
+        [{ foundedYearFrom: 2020, foundedYearTo: 2020 }, 2]] as const) {
+        expect((await dashboard({ country, ...bounds }).expect(200)).body.summary.companyCount).toBe(count);
+      }
+      for (const bad of [{ foundedYearFrom: 2021, foundedYearTo: 2018 }, { foundedYearFrom: '2e3' },
+        { foundedYearTo: 10000 }, { levels: '2,0' }, { country: '   ' }, { userId }]) {
+        await dashboard(bad).expect(400);
+        expect((await ask('查 Dashboard 指标', bad)).content.code).toBe('INVALID_ARGUMENTS');
+      }
+      expect((await ask('查 Dashboard 指标', { view: 'unknown' })).content.code).toBe('INVALID_ARGUMENTS');
+    } finally {
+      audit.mockRestore();
+      await pool.query('DELETE FROM companies WHERE company_code = ANY($1::text[])', [codes]);
+    }
+  });
+
   it('模型失败后保留用户消息和失败状态，不插入假回复', async ()=>{
     const session=await createSession();
     chat.mockRejectedValueOnce(new ModelError('authentication','private detail not returned'));
