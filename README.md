@@ -74,6 +74,7 @@ npm run test:integration
 ## 文档索引
 
 - [AI Agent 第二周第一步 · 业务工具接入核对](docs/ai-tools-step-1.md) · 三个只读工具的 Service、权限、字段、接入缺口和待确认口径。
+- [AI Agent 第二周第二步 · 工具开发规范](docs/ai-tools-step-2.md) · 从认证请求取得上下文，声明工具权限和输入 DTO，通过业务 Service 执行。
 - [AI Agent 第一周交付与验收](docs/ai-foundation-step-12.md) · 后端配置、数据库升级、JWT 接口试用、Redis Key 和一键回归命令。
 - 环境与工具说明：
   - [本地数据库环境](docs/local-databases.md)

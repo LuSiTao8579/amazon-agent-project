@@ -6,10 +6,23 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { isIP } from 'node:net';
 import type { Request } from 'express';
 import { isUUID } from 'class-validator';
 import type { PublicUser } from './users/user.types.js';
 import { UsersService } from './users/users.service.js';
+
+export type ToolContext = Readonly<{ userId: string; isAdmin: boolean; ip: string }>;
+export type ToolRequest = Request & { toolContext?: ToolContext };
+
+// 只有完成 JWT 验证和账号检查的请求才能获得可用的上下文对象。
+const issuedContexts = new WeakSet<ToolContext>();
+
+export function requireToolContext(context: ToolContext | undefined): asserts context is ToolContext {
+  if (!context || !issuedContexts.has(context)) {
+    throw new UnauthorizedException('需要已认证请求的工具上下文');
+  }
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -21,7 +34,7 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
       .switchToHttp()
-      .getRequest<Request & { user?: PublicUser }>();
+      .getRequest<ToolRequest & { user?: PublicUser }>();
     const parts = request.headers.authorization?.split(' ');
     if (
       !parts ||
@@ -54,6 +67,12 @@ export class JwtAuthGuard implements CanActivate {
     const user = await this.users.findById(subject);
     if (!user || user.status !== 'active') throw new UnauthorizedException('用户不存在或登录状态已失效');
     request.user = user;
+    const ip = request.socket.remoteAddress;
+    if (ip && isIP(ip)) {
+      const toolContext = Object.freeze({ userId: user.id, isAdmin: user.isAdmin, ip });
+      issuedContexts.add(toolContext);
+      request.toolContext = toolContext;
+    }
     return true;
   }
 }

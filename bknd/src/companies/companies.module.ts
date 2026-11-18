@@ -4,5 +4,10 @@ import { UsersModule } from '../users/users.module.js';
 import { CompaniesController } from './companies.controller.js';
 import { CompaniesService } from './companies.service.js';
 
-@Module({ imports: [AuthModule, UsersModule], controllers: [CompaniesController], providers: [CompaniesService] })
+@Module({
+  imports: [AuthModule, UsersModule],
+  controllers: [CompaniesController],
+  providers: [CompaniesService],
+  exports: [CompaniesService],
+})
 export class CompaniesModule {}

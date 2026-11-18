@@ -4,5 +4,10 @@ import { UsersModule } from '../users/users.module.js';
 import { DashboardController } from './dashboard.controller.js';
 import { DashboardService } from './dashboard.service.js';
 
-@Module({ imports: [AuthModule, UsersModule], controllers: [DashboardController], providers: [DashboardService] })
+@Module({
+  imports: [AuthModule, UsersModule],
+  controllers: [DashboardController],
+  providers: [DashboardService],
+  exports: [DashboardService],
+})
 export class DashboardModule {}

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AiCacheModule } from '../ai/cache/ai-cache.module.js';
+import { AiToolsModule } from '../ai/tools/ai-tools.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AiAgentController } from './ai-agent.controller.js';
@@ -11,7 +12,7 @@ import { ChatTurnService } from './chat-turn.service.js';
 import { ChatAttachmentService } from './chat-attachment.service.js';
 
 @Module({
-  imports: [AuthModule, UsersModule, AiCacheModule],
+  imports: [AuthModule, UsersModule, AiCacheModule, AiToolsModule],
   controllers: [AiAgentController],
   providers: [AiAgentService, ChatRepository, ModelService, ChatTurnRepository, ChatTurnService, ChatAttachmentService],
   exports: [AiAgentService],
