@@ -1,11 +1,14 @@
 'use client';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Box, Button, Checkbox, Chip, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material';
-import RevenuePerEmployeeChip from './revenue-per-employee-chip';
+import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material';
+import type { CompanyRow, UserRow } from '../../../contracts/tool-result.d.ts';
+import CompanyTableRow, { companyColumns } from './company-table-row';
+import UserTableCells, { userColumns } from './user-table-cells';
 import { errorMessage } from '@/lib/auth-contract';
 
-type Row = Record<string, string | number | boolean | null>;
+type ManagedUser = UserRow & { id: string; isAdmin: boolean };
+type Row = CompanyRow | ManagedUser;
 type Field = { key: string; label: string; type?: string; options?: string[] };
 const userFields: Field[] = [{key:'name',label:'姓名'},{key:'email',label:'邮箱',type:'email'},{key:'role',label:'岗位',options:['Member','Manager','Analyst']},{key:'status',label:'状态',options:['active','inactive']}];
 const companyFields: Field[] = [{key:'companyCode',label:'公司编码'},{key:'companyName',label:'名称'},{key:'level',label:'等级',type:'number'},{key:'country',label:'国家'},{key:'city',label:'城市'},{key:'foundedYear',label:'成立年份',type:'number'},{key:'annualRevenue',label:'年营收',type:'number'},{key:'employees',label:'员工数量',type:'number'}];
@@ -30,7 +33,8 @@ export default function ManagementTable({ kind, isAdmin }: { kind: 'users'|'comp
   const [form,setForm] = useState<Record<string,string>|null>(null);
   const [editId,setEditId] = useState<string|null>(null);
   const [deleting,setDeleting] = useState<string[]|null>(null);
-  const idOf = (r: Row) => String(company ? r.companyCode : r.id);
+  const idOf = (row: Row) => 'companyCode' in row ? row.companyCode : row.id;
+  const selectableUsers = rows.filter((row): row is ManagedUser => 'isAdmin' in row && !row.isAdmin);
   const permitted = company || isAdmin;
   const options = company ? Array.from({length:100},(_,i)=>String(i+1)) : ['Member','Manager','Analyst'];
   // AbortController与延迟查询防止旧搜索结果覆盖新结果；分页/筛选变化清空选择。
@@ -93,18 +97,27 @@ export default function ManagementTable({ kind, isAdmin }: { kind: 'users'|'comp
       {loading && <LinearProgress/>}
       <TableContainer><Table aria-label={company?'公司表格':'用户表格'}>
         <TableHead><TableRow>
-          <TableCell>{company?'详情':<Checkbox inputProps={{'aria-label':'选择当前页普通用户'}} checked={rows.some(r=>!r.isAdmin)&&rows.filter(r=>!r.isAdmin).every(r=>selected.includes(idOf(r)))} disabled={loading||busy} onChange={e=>setSelected(e.target.checked?rows.filter(r=>!r.isAdmin).map(idOf):[])}/>}</TableCell>
-          {(company?['名称','等级','国家','人均年营收']:['姓名','邮箱','岗位','状态']).map(label=><TableCell key={label}>{label}</TableCell>)}<TableCell>操作</TableCell>
+          <TableCell>{company?'详情':<Checkbox inputProps={{'aria-label':'选择当前页普通用户'}} checked={selectableUsers.length > 0 && selectableUsers.every(r=>selected.includes(idOf(r)))} disabled={loading||busy} onChange={e=>setSelected(e.target.checked?selectableUsers.map(idOf):[])}/>}</TableCell>
+          {(company ? companyColumns.slice(1) : userColumns).map(label=><TableCell key={label}>{label}</TableCell>)}<TableCell>操作</TableCell>
         </TableRow></TableHead>
-        <TableBody>{rows.map(row=>{const id=idOf(row);const ratio=row.revenuePerEmployee;return <Fragment key={id}>
-          <TableRow hover>
-            <TableCell>{company?<Button aria-label={'展开 '+row.companyName} aria-expanded={expanded.includes(id)} onClick={()=>setExpanded(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id])}>{expanded.includes(id)?'收起':'展开'}</Button>:<Checkbox inputProps={{'aria-label':'选择 '+row.email}} checked={selected.includes(id)} disabled={!!row.isAdmin||busy||loading} onChange={e=>setSelected(v=>e.target.checked?[...v,id]:v.filter(x=>x!==id))}/>}</TableCell>
-            {(company?['companyName','level','country']:['name','email','role']).map(key=><TableCell key={key}>{String(row[key]||'未设置')}</TableCell>)}
-            <TableCell>{company?<RevenuePerEmployeeChip value={typeof ratio === 'number' ? ratio : null} />:<Chip label={row.status==='active'?'启用':'停用'} color={row.status==='active'?'success':'default'}/>}</TableCell>
-            <TableCell>{isAdmin && (company||!row.isAdmin)?<Stack direction="row"><Button disabled={busy} onClick={()=>open(row)}>编辑</Button><Button color="error" disabled={busy} onClick={()=>setDeleting([id])}>删除</Button></Stack>:<Typography variant="caption">{row.isAdmin?'管理员受保护':'只读'}</Typography>}</TableCell>
-          </TableRow>
-          {company && <TableRow><TableCell colSpan={6} sx={{py:0}}><Collapse in={expanded.includes(id)} unmountOnExit><Stack spacing={1} sx={{p:2}}>{companyFields.slice(4).map(f=><Typography key={f.key}>{f.label}：{String(row[f.key])}</Typography>)}</Stack></Collapse></TableCell></TableRow>}
-        </Fragment>;})}
+        <TableBody>{rows.map(row => {
+          const id = idOf(row);
+          const protectedUser = 'isAdmin' in row && row.isAdmin;
+          const actions = isAdmin && !protectedUser ? <Stack direction="row">
+            <Button disabled={busy} onClick={() => open(row)}>编辑</Button>
+            <Button color="error" disabled={busy} onClick={() => setDeleting([id])}>删除</Button>
+          </Stack> : <Typography variant="caption">{protectedUser ? '管理员受保护' : '只读'}</Typography>;
+          if ('companyCode' in row) return <CompanyTableRow key={id} company={row} actions={actions}
+            expanded={expanded.includes(id)} onToggle={() => setExpanded(current =>
+              current.includes(id) ? current.filter(code => code !== id) : [...current, id])} />;
+          return <TableRow key={id} hover>
+            <TableCell><Checkbox inputProps={{'aria-label':'选择 '+row.email}} checked={selected.includes(id)}
+              disabled={protectedUser || busy || loading}
+              onChange={e => setSelected(current => e.target.checked ? [...current, id] : current.filter(key => key !== id))}/></TableCell>
+            <UserTableCells user={row}/>
+            <TableCell>{actions}</TableCell>
+          </TableRow>;
+        })}
         {!loading&&!rows.length&&<TableRow><TableCell colSpan={6}>没有符合条件的数据</TableCell></TableRow>}
         </TableBody></Table></TableContainer>
       <TablePagination component="div" count={total} page={page} rowsPerPage={size} rowsPerPageOptions={[10,25,50]} onPageChange={(_,p)=>{setPage(p);setSelected([]);}} onRowsPerPageChange={e=>{setSize(Number(e.target.value));setPage(0);setSelected([]);}}/>

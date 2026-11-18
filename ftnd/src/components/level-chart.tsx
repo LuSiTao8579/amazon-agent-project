@@ -11,7 +11,7 @@ export default function LevelChart({rows}:{rows:DashboardData['levelDistribution
     <Typography variant="h6">供应公司等级分布</Typography>
     <Typography variant="body2" color="text.secondary">鼠标悬停查看数量和占比；完整数据见下表。</Typography>
     {rows.length ? <>
-      <Box sx={{height:260,mt:2}}>
+      <Box sx={{height:260, mt: 2, position: 'relative', '& canvas': { maxWidth: '100%' }}}>
         <Doughnut aria-label="公司等级占比环形图" role="img"
           data={{labels:rows.map(r=>`Level ${r.level}`),datasets:[{data:rows.map(r=>r.count),backgroundColor:rows.map((_,i)=>colors[i%colors.length])}]}}
           options={{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:ctx=>{const row=rows[ctx.dataIndex];return `Level ${row.level}: ${row.count.toLocaleString()} 家（${row.percentage.toFixed(2)}%）`;}}}}}}/>

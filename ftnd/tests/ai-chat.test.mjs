@@ -45,7 +45,7 @@ test('固定样例通过历史消息入口区分文本、两种表格、单图�
 test('零匹配、超出最后一页、工具失败与损坏的结果分别展示', () => {
   const read = content => normalizeMessage({ ...base, messageType: content.resultType, content });
   assert.deepEqual(read(examples.empty).content, { title: '公司表', tableType: 'companies', total: 0, page: 1, pageSize: 10,
-    companies: [], summary: '没有符合条件的记录。' });
+    companies: [], summary: '没有符合条件的记录。共 0 条，第 1 页显示 0 条，每页 10 条。' });
   const laterPage = { ...examples.empty, data: { ...examples.empty.data, total: 3, page: 2 } };
   assert.match(read(laterPage).content.summary, /共 3 条，第 2 页显示 0 条/);
   for (const content of [examples.disabled, examples.forbidden]) {
@@ -110,7 +110,11 @@ test('两种表格保留页码和行数，并拒绝与页数冲突的行及缺�
     const content = read(data).content;
     assert.deepEqual([content.tableType, content.total, content.page, content.pageSize], [data.tableType, 11, 2, 10]);
     assert.equal(read({ ...data, total: 10 }).type, 'unsupported');
-    const { code, ...missingCode } = tool;
+    assert.equal(content.summary, '共 11 条，第 2 页显示 1 条，每页 10 条。');
+    assert.equal(read({ ...data, page: 1, total: 0, items: [] }).content.summary,
+      '没有符合条件的记录。共 0 条，第 1 页显示 0 条，每页 10 条。');
+    const missingCode = { ...tool };
+    delete missingCode.code;
     assert.equal(normalizeMessage({ ...base, messageType: 'table', content: missingCode }).type, 'unsupported');
   }
 });

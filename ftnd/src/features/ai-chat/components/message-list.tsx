@@ -6,7 +6,8 @@ export default function MessageList({ messages, sessionId }: { messages: ChatMes
   return <Stack spacing={1.5}>
     {messages.map(message => <Box key={message.id} sx={{ alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
       bgcolor: message.role === 'user' ? 'primary.main' : 'background.paper', color: message.role === 'user' ? 'primary.contrastText' : 'text.primary',
-      borderRadius: 2, px: 2, py: 1.5, maxWidth: '88%', minWidth: 0, overflowWrap: 'anywhere' }}>
+      borderRadius: 2, px: 2, py: 1.5, maxWidth: '88%', minWidth: 0,
+      ...(['table', 'chart', 'report'].includes(message.type) && { width: '100%', maxWidth: '100%' }), overflowWrap: 'anywhere' }}>
       <Typography variant="caption">{message.role === 'user' ? '我' : 'AI 助手'}</Typography>
       <MessageRenderer message={message} />
       {message.attachments?.map(file => <Box key={file.id} sx={{ mt: 1 }}>

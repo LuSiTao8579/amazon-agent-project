@@ -1,9 +1,11 @@
-import { Alert, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
+import { Alert, Stack, TableRow, Typography } from '@mui/material';
 import type { ChatMessage } from '../types';
 import CompanyTableMessage from './company-table-message';
 import DashboardMetrics from '../../../components/dashboard-metrics';
 import GrowthChart from '../../../components/growth-chart';
 import LevelChart from '../../../components/level-chart';
+import UserTableCells, { userColumns } from '../../../components/user-table-cells';
+import ResultTable from './result-table';
 import ChatError from './chat-error';
 import TextMessageView from './text-message';
 
@@ -13,16 +15,9 @@ function TableMessage({ content }: Extract<ChatMessage, { type: 'table' }>) {
     return <Typography variant="body2">{title} · {summary}</Typography>;
   if (content.tableType === 'companies')
     return <CompanyTableMessage companies={content.companies} summary={summary} />;
-  return <Stack spacing={1}>
-    <Typography variant="body2">{summary}</Typography>
-    <TableContainer><Table size="small" aria-label="用户查询结果">
-      <TableHead><TableRow>{['姓名', '邮箱', '岗位', '状态'].map(label => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
-      <TableBody>{content.users.map(user => <TableRow key={user.email}>
-        <TableCell>{user.name || '未设置'}</TableCell><TableCell>{user.email}</TableCell>
-        <TableCell>{user.role}</TableCell><TableCell>{user.status}</TableCell>
-      </TableRow>)}</TableBody>
-    </Table></TableContainer>
-  </Stack>;
+  return <ResultTable label="用户查询结果" columns={userColumns} summary={summary}>
+    {content.users.map(user => <TableRow key={user.email}><UserTableCells user={user}/></TableRow>)}
+  </ResultTable>;
 }
 
 export default function MessageRenderer({ message }: { message: ChatMessage }) {

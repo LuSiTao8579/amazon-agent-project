@@ -120,7 +120,8 @@ export function normalizeMessage(row: unknown): ChatMessage {
         typeof pageSize !== 'number' || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100 ||
         items.length > pageSize || items.length > Math.max(0, total - (page - 1) * pageSize)) return invalid;
       const title = tableType === 'users' ? '用户表' : '公司表';
-      const summary = total === 0 ? '没有符合条件的记录。' : `共 ${total} 条，第 ${page} 页显示 ${items.length} 条，每页 ${pageSize} 条。`;
+      const pageSummary = `共 ${total} 条，第 ${page} 页显示 ${items.length} 条，每页 ${pageSize} 条。`;
+      const summary = total === 0 ? `没有符合条件的记录。${pageSummary}` : pageSummary;
       const paging = { title, summary, total, page, pageSize };
       if (tableType === 'companies') {
         const companies = companyRows(items);
