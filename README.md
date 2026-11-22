@@ -84,6 +84,7 @@ npm run test:integration
 - [AI Agent 第二周第九步 · Dashboard 综合指标](docs/ai-tools-step-9.md) · 成立年份、国家和等级筛选，指标卡与两种单图验收。
 - [AI Agent 第二周第十步 · 聊天消息分发](docs/ai-tools-step-10.md) · 首次显示与历史恢复、报表选图、空结果及统一错误提示。
 - [AI Agent 第二周第十一步 · 公司折叠表和 Dashboard 卡片](docs/ai-tools-step-11.md) · 两端共享行与卡片、独立展开、分页和窄屏验收。
+- [AI Agent 第二周交付与验收](docs/ai-tools-step-12.md) · 两账号演示、工具参数与结果样例、开关、回归记录和第四个只读工具接入。
 - [AI Agent 第一周交付与验收](docs/ai-foundation-step-12.md) · 后端配置、数据库升级、JWT 接口试用、Redis Key 和一键回归命令。
 - 环境与工具说明：
   - [本地数据库环境](docs/local-databases.md)

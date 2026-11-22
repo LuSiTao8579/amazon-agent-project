@@ -154,6 +154,41 @@ describe('聊天用户查询与管理列表', () => {
     } finally { list.mockRestore(); }
   });
 
+  it('聊天工具拒绝身份覆盖，Service 异常只保留安全提示和脱敏审计', async () => {
+    const list = vi.spyOn(app.get(UserManagementService), 'list');
+    const privateMessage = 'private fixture: backend query failed';
+    const searchInput = 'private-contact@example.test';
+    const http = request(app.getHttpServer());
+    try {
+      propose({ userId: actors.member, isAdmin: true, search: searchInput });
+      const rejected = (await run('admin', '查用户')).body.assistantMessage;
+      expect(rejected.content).toMatchObject({ code: 'INVALID_ARGUMENTS', data: null, resultType: 'text' });
+      expect(list).not.toHaveBeenCalled();
+
+      propose({ search: searchInput });
+      list.mockRejectedValueOnce(new Error(privateMessage));
+      const failed = (await run('admin', '查用户')).body.assistantMessage;
+      expect(list).toHaveBeenCalledTimes(1);
+      expect(failed.content).toMatchObject({ code: 'EXECUTION_FAILED', data: null, resultType: 'text', message: '查询未完成，请稍后重试。' });
+      const history = await http.get('/ai-agent/sessions/' + sessions.get('admin') + '/messages')
+        .auth(tokens.get('admin')!, { type: 'bearer' }).query({ cursor: 'latest', pageSize: 1 }).expect(200);
+      expect(history.body.items[0].content).toEqual(failed.content);
+
+      const audits = await http.get('/ai/audits').auth(tokens.get('admin')!, { type: 'bearer' })
+        .query({ result: 'failure' }).expect(200);
+      const items = audits.body.items as AiOperationAuditEntity[];
+      expect(items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ userId: actors.admin, toolName: 'query_users', inputParams: { userId: '[REDACTED]', isAdmin: true, search: '[REDACTED]' },
+          resultSummary: { code: 'INVALID_ARGUMENTS', resultType: 'text' } }),
+        expect.objectContaining({ userId: actors.admin, toolName: 'query_users', inputParams: { search: '[REDACTED]' },
+          resultSummary: { code: 'EXECUTION_FAILED', resultType: 'text' } }),
+      ]));
+      const exposed = JSON.stringify([rejected.content, failed.content, history.body, items]);
+      expect(exposed).not.toContain(searchInput);
+      expect(exposed).not.toContain(privateMessage);
+    } finally { list.mockRestore(); }
+  });
+
   it('撤权后直接调用、读取历史和重放均无法取得用户行', async () => {
     const service = app.get(UserManagementService);
     const dto = new UserListDto();

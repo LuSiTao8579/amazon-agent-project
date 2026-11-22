@@ -118,6 +118,15 @@ try {
   assert.equal(session.status, 'active');
   const messages = await http.get('/ai-agent/sessions/' + session.id + '/messages').set(bearer).expect(200);
   assert.deepEqual(messages.body.items.map(message => message.content.text), ['旧问题', '旧回复']);
+  const audits = await http.get('/ai/audits').set(bearer).expect(200);
+  assert.equal(audits.body.items.length, 1);
+  const oldAudit = await http.get('/ai/audits/' + audits.body.items[0].id).set(bearer).expect(200);
+  assert.equal(oldAudit.body.action, 'legacy.read');
+  assert.equal(oldAudit.body.userId, session.userId);
+  assert.equal(oldAudit.body.result, 'success');
+  for (const field of ['toolName', 'inputParams', 'resultSummary', 'ip']) {
+    assert.equal(oldAudit.body[field], null);
+  }
   const report = await http.post('/ai/audits').set(bearer).send({
     action: 'session.read', resourceType: 'session', resourceId: session.id, result: 'success',
   }).expect(201);
@@ -129,7 +138,7 @@ try {
   await app.close();
 }
 JS
-echo '升级后 HTTP 验证通过：旧账号可以登录，旧会话和消息可读，新审计可写入并按 ID 回读。'
+echo '0008 升级后 HTTP 验证通过：旧账号、会话、消息和 0007 审计均可读取；新审计可写入并按 ID 回读。'
 
 export DATABASE_URL="$pg_url/week1_fresh"
 npm run db:migrate
