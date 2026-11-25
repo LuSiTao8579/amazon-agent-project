@@ -32,4 +32,4 @@
 
 ## 复验
 
-在 `bknd/` 运行 `bash scripts/verify-ai-foundation.sh`（需要 Docker）。新增用例使用固定模型提案，在真实 PostgreSQL 和 Redis 上验证管理 API 和聊天结果逐页相同、响应字段白名单、三种账号的权限、拒绝审计、无效状态和撤权后的访问。[第八步端到端用例](../bknd/test/user-query-tool.e2e-spec.ts)
+在 `bknd/` 运行 `bash scripts/verify-ai-foundation.sh`（需要 Docker）。新增用例使用固定模型提案，在真实 PostgreSQL 和 Redis 上验证管理 API 和聊天结果逐页相同、响应字段白名单、三种账号的权限、拒绝审计、无效状态和撤权后的访问。[第八步端到端用例](../bknd/test/read-tool-api.e2e-spec.ts)

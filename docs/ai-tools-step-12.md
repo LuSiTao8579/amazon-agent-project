@@ -101,4 +101,4 @@ bash bknd/scripts/verify-ai-tools-browser.sh
 | 异常与审计 | 每页 101 条触发分页提示；业务异常显示“查询未完成，请稍后重试。”。从审计接口读回脱敏参数与结果码。模拟模型返回 HTTP 503 时，页面只显示服务暂不可用，工具审计数量保持不变。 |
 | 迁移兼容 | 在 0007 写入审计再升级到 0008，原账号经 HTTP 列表与详情读回原记录，新增的工具名、入参、结果摘要和 IP 均为 null。新审计写入后可回读，重复执行迁移通过。 |
 
-每次复跑以脚本的退出状态判断是否通过。浏览器断言覆盖模型候选、实际业务调用计数、业务 API 对照、可见 DOM 和审计；后端回归另有撤权、伪造上下文、嵌套字段脱敏和迁移检查。[浏览器断言](../bknd/scripts/verify-ai-tools-browser.mjs) · [用户权限和异常测试](../bknd/test/user-query-tool.e2e-spec.ts) · [嵌套脱敏与审计](../bknd/test/tool-registry.e2e-spec.ts)
+每次复跑以脚本的退出状态判断是否通过。浏览器断言覆盖模型候选、实际业务调用计数、业务 API 对照、可见 DOM 和审计；后端回归另有撤权、伪造上下文、嵌套字段脱敏和迁移检查。[浏览器断言](../bknd/scripts/verify-ai-tools-browser.mjs) · [用户权限和异常测试](../bknd/test/read-tool-api.e2e-spec.ts) · [嵌套脱敏与审计](../bknd/test/tool-registry.e2e-spec.ts)

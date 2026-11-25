@@ -12,7 +12,7 @@ import { setupApp } from '../src/setup-app.js';
 import { PG_POOL } from '../src/database/database.module.js';
 import { ModelService } from '../src/ai-agent/providers/model.service.js';
 import type { ChatModel } from '../src/ai-agent/providers/chat-model.types.js';
-import { toolDefinitions } from '../src/ai-agent/providers/chat-tools.js';
+import { toolDefinitions, type ChatToolName } from '../src/ai-agent/providers/chat-tools.js';
 import { AI_DATA_SOURCE } from '../src/ai/ai.constants.js';
 import { AiAuditService } from '../src/ai/services/ai-audit.service.js';
 import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.entity.js';
@@ -23,8 +23,10 @@ import { UserManagementService } from '../src/users/user-management.service.js';
 import { UserListDto } from '../src/users/user-management.dto.js';
 import type { PublicUser } from '../src/users/user.types.js';
 
-describe('聊天用户查询与管理列表', () => {
+describe('三类只读工具与业务 HTTP 接口对照', () => {
   const search = 'step8-' + randomUUID();
+  const country = 'fixture-' + randomUUID();
+  const companyCodes = ['A', 'B', 'C'].map(suffix => country + suffix);
   const actors = { admin: randomUUID(), member: randomUUID(), manager: randomUUID() };
   type Actor = keyof typeof actors;
   const ids = Object.values(actors);
@@ -54,6 +56,35 @@ describe('聊天用户查询与管理列表', () => {
     });
   }
 
+  function businessGet(actor: Actor, path: string) {
+    return request(app.getHttpServer()).get(path).auth(tokens.get(actor)!, { type: 'bearer' });
+  }
+
+  async function auditItems(actor: Actor): Promise<AiOperationAuditEntity[]> {
+    const response = await businessGet(actor, '/ai/audits').query({ pageSize: 100 }).expect(200);
+    return response.body.items;
+  }
+
+  async function checkedTurn(actor: Actor, text: string, tool: ChatToolName, input: Record<string, unknown>,
+    code: 'OK' | 'INVALID_ARGUMENTS' | 'FORBIDDEN' = 'OK') {
+    const before = new Set((await auditItems(actor)).map(row => row.id));
+    if (tool === 'query_users') {
+      propose(input);
+    } else {
+      chat.mockImplementationOnce(async (_messages, names) => {
+        expect(names).toContain(tool);
+        return { tool, args: input };
+      });
+    }
+    const { assistantMessage } = (await run(actor, text)).body;
+    expect(assistantMessage.content.code).toBe(code);
+    // 事务内多条记录可能具有相同时间戳，按 ID 差集识别本次调用。
+    const added = (await auditItems(actor)).filter(row => !before.has(row.id));
+    expect(added).toEqual([expect.objectContaining({ userId: actors[actor], toolName: tool,
+      result: code === 'OK' ? 'success' : 'failure', resultSummary: expect.objectContaining({ code }) })]);
+    return assistantMessage;
+  }
+
   beforeAll(async () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(ModelService).useValue({ chat })
@@ -77,6 +108,9 @@ describe('聊天用户查询与管理列表', () => {
         .auth(token, { type: 'bearer' }).send({}).expect(201);
       sessions.set(actor, res.body.id);
     }
+    await db.query(`INSERT INTO companies(company_code,company_name,country,city,level,founded_year,annual_revenue,employees)
+      VALUES ($1,'Alpha',$4,'London',2,2018,200,2), ($2,'Beta',$4,'London',3,2020,42,0),
+             ($3,'Outside',$4,'Leeds',4,2021,900,9)`, [...companyCodes, country]);
     for (const [name, role, status] of [
       [search + '-A', 'Manager', 'inactive'], [search + '-B', 'Analyst', 'inactive'], [search + '-C', 'Manager', 'inactive'],
       [search + '-D', 'Member', 'inactive'], [search + '-E', 'Analyst', 'active'], ['different', 'Manager', 'inactive'],
@@ -98,6 +132,7 @@ describe('聊天用户查询与管理列表', () => {
           await db.query(`DELETE FROM ${table} WHERE session_id=ANY($1::uuid[])`, [sessionIds]);
         await db.query('DELETE FROM ai_chat_session WHERE id=ANY($1::uuid[])', [sessionIds]);
         await db.query('DELETE FROM ai_chat_sessions WHERE id=ANY($1::uuid[])', [sessionIds]);
+        await db.query('DELETE FROM companies WHERE company_code=ANY($1::text[])', [companyCodes]);
         await db.query('DELETE FROM users WHERE id=ANY($1::uuid[])', [ids]);
       }
     } finally { await app?.close(); }
@@ -107,8 +142,9 @@ describe('聊天用户查询与管理列表', () => {
     for (const [page, suffixes] of [[1, ['C', 'B']], [2, ['A']], [3, []]] as const) {
       const api = await request(app.getHttpServer()).get('/users').auth(tokens.get('admin')!, { type: 'bearer' })
         .query({ ...args, roles: args.roles.join(','), page }).expect(200);
-      propose({ ...args, page });
-      const { assistantMessage } = (await run('admin', `查姓名含 ${search} 的已停用用户，岗位为 Analyst 或 Manager，按姓名降序，每页 2 人，第 ${page} 页`)).body;
+      const assistantMessage = await checkedTurn('admin',
+        `查姓名含 ${search} 的已停用用户，岗位为 Analyst 或 Manager，按姓名降序，每页 2 人，第 ${page} 页`,
+        'query_users', { ...args, page });
       expect(assistantMessage.messageType).toBe('table');
       const items = api.body.items.map(({ name, email, role, status }: PublicUser) => ({ name, email, role, status }));
       expect(items.map(({ name }: PublicUser) => name)).toEqual(suffixes.map(suffix => search + '-' + suffix));
@@ -128,14 +164,12 @@ describe('聊天用户查询与管理列表', () => {
     const list = vi.spyOn(app.get(UserManagementService), 'list');
     const execute = vi.spyOn(app.get(ToolRegistryService), 'execute');
     try {
-      propose(args);
-      const result = (await run(actor, '查用户')).body.assistantMessage.content;
+      const { content: result } = await checkedTurn(actor, '查用户', 'query_users', args, 'FORBIDDEN');
       expect(result).toMatchObject({ code: 'FORBIDDEN', resultType: 'text', data: null, message: expect.stringContaining('权限') });
       await request(app.getHttpServer()).get('/users').auth(tokens.get(actor)!, { type: 'bearer' }).expect(403);
       expect(list).not.toHaveBeenCalled();
-      const audits = await request(app.getHttpServer()).get('/ai/audits').auth(tokens.get(actor)!, { type: 'bearer' }).expect(200);
-      expect(audits.body.items).toEqual([expect.objectContaining({ userId: actors[actor], toolName: 'query_users',
-        action: 'users.read', result: 'failure', resultSummary: { code: 'FORBIDDEN', resultType: 'text' } })]);
+      expect(await auditItems(actor)).toContainEqual(expect.objectContaining({ userId: actors[actor], toolName: 'query_users',
+        action: 'users.read', result: 'failure', resultSummary: { code: 'FORBIDDEN', resultType: 'text' } }));
       const context = execute.mock.calls[0][1];
       await expect(app.get(UserManagementService).list(new UserListDto(), context)).rejects.toMatchObject({ status: 403 });
     } finally { list.mockRestore(); execute.mockRestore(); }
@@ -145,13 +179,72 @@ describe('聊天用户查询与管理列表', () => {
     const list = vi.spyOn(app.get(UserManagementService), 'list');
     try {
       for (const status of ['', null, ['active'], 'paused']) {
-        propose({ status });
-        expect((await run('admin', '查用户')).body.assistantMessage.content).toMatchObject({ code: 'INVALID_ARGUMENTS', data: null });
+        const message = await checkedTurn('admin', '查用户', 'query_users', { status }, 'INVALID_ARGUMENTS');
+        expect(message.content).toMatchObject({ code: 'INVALID_ARGUMENTS', data: null });
       }
       await request(app.getHttpServer()).get('/users').auth(tokens.get('admin')!, { type: 'bearer' })
         .query({ status: 'paused' }).expect(400);
       expect(list).not.toHaveBeenCalled();
     } finally { list.mockRestore(); }
+  });
+
+  it('用户筛选无匹配时两端都返回零条', async () => {
+    const input = { search: search + '-missing' };
+    const api = await businessGet('admin', '/users').query(input).expect(200);
+    expect(api.body).toEqual({ items: [], total: 0, page: 1, pageSize: 10 });
+    const message = await checkedTurn('admin', '查用户', 'query_users', input);
+    expect(message.content.data).toEqual({ tableType: 'users', ...api.body });
+  });
+
+  it('公司表格按页对照业务字段，零员工返回 null，无匹配返回空表', async () => {
+    const filters = { country, city: 'London', levels: [2, 3], sortBy: 'companyName', sortOrder: 'asc', pageSize: 1 };
+    for (const [page, expectedRevenue] of [[1, 100], [2, null]] as const) {
+      const api = await businessGet('member', '/companies').query({ ...filters, levels: '2,3', page }).expect(200);
+      const { items, ...paging } = api.body;
+      expect(paging).toEqual({ page, pageSize: 1, total: 2 });
+      expect(items).toEqual([expect.objectContaining({ companyCode: companyCodes[page - 1], revenuePerEmployee: expectedRevenue })]);
+      const rows = items.map(({ createdAt: _created, updatedAt: _updated, ...row }: Record<string, unknown>) => row);
+      const message = await checkedTurn('member', '查公司', 'query_companies', { ...filters, page });
+      expect(message.messageType).toBe('table');
+      expect(message.content.data).toEqual({ tableType: 'companies', ...paging, items: rows });
+    }
+    const empty = { country, city: 'Paris' };
+    const api = await businessGet('member', '/companies').query(empty).expect(200);
+    expect(api.body).toEqual({ items: [], total: 0, page: 1, pageSize: 10 });
+    const message = await checkedTurn('member', '查公司', 'query_companies', empty);
+    expect(message.content.data).toEqual({ tableType: 'companies', ...api.body });
+  });
+
+  it('Dashboard 按成立年份和国家对照四项指标、等级分布、累计趋势及空报表', async () => {
+    const filters = { country, foundedYearFrom: 2018, foundedYearTo: 2020 };
+    const api = await businessGet('member', '/dashboard').query(filters).expect(200);
+    expect(api.body).toEqual({
+      summary: { companyCount: 2, totalRevenue: 242, countryCount: 1, employeeCount: 2 },
+      levelDistribution: [{ level: 2, count: 1, percentage: 50 }, { level: 3, count: 1, percentage: 50 }],
+      yearlyGrowth: [{ year: 2018, newCompanies: 1, cumulativeCompanies: 1 },
+        { year: 2019, newCompanies: 0, cumulativeCompanies: 1 }, { year: 2020, newCompanies: 1, cumulativeCompanies: 2 }],
+    });
+    const report = await checkedTurn('member', '查看 Dashboard', 'dashboard_metrics', filters);
+    expect(report.messageType).toBe('report');
+    expect(report.content.data).toEqual(api.body);
+    const empty = { ...filters, foundedYearFrom: 2019, foundedYearTo: 2019 };
+    const noMatches = await businessGet('member', '/dashboard').query(empty).expect(200);
+    expect(noMatches.body).toEqual({
+      summary: { companyCount: 0, totalRevenue: 0, countryCount: 0, employeeCount: 0 }, levelDistribution: [], yearlyGrowth: [],
+    });
+    const emptyReport = await checkedTurn('member', '查看 Dashboard', 'dashboard_metrics', empty);
+    expect(emptyReport.content.data).toEqual(noMatches.body);
+  });
+
+  it('公司非法分页和 Dashboard 颠倒年份分别返回参数错误', async () => {
+    const invalidPage = { pageSize: 101 };
+    await businessGet('member', '/companies').query(invalidPage).expect(400);
+    const company = await checkedTurn('member', '查公司', 'query_companies', invalidPage, 'INVALID_ARGUMENTS');
+    expect(company.content.data).toBeNull();
+    const invalidYears = { foundedYearFrom: 2020, foundedYearTo: 2018 };
+    await businessGet('member', '/dashboard').query(invalidYears).expect(400);
+    const dashboard = await checkedTurn('member', '查看 Dashboard', 'dashboard_metrics', invalidYears, 'INVALID_ARGUMENTS');
+    expect(dashboard.content.data).toBeNull();
   });
 
   it('聊天工具拒绝身份覆盖，Service 异常只保留安全提示和脱敏审计', async () => {
