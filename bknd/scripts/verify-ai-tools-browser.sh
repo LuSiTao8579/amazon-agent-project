@@ -5,8 +5,8 @@ cd "$(dirname "$0")/.."
 
 mode=${1:-fixture}
 case "$mode" in
-  fixture|target) ;;
-  *) echo 'Usage: verify-ai-tools-browser.sh [fixture|target]' >&2; exit 2 ;;
+  fixture|target|benchmark) ;;
+  *) echo 'Usage: verify-ai-tools-browser.sh [fixture|target|benchmark]' >&2; exit 2 ;;
 esac
 
 npm run build

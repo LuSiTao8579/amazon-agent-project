@@ -216,6 +216,8 @@ describe('AI多轮对话 HTTP 与数据库', () => {
         await pool.query(`INSERT INTO companies(company_code,company_name,city,country,level,founded_year,annual_revenue,employees)
           VALUES ($1,$1,'test',$2,$3,$4,$5,$6)`, [codes[index], ...row]);
       }
+      // 本用例用 SQL 更换了样本，同一测试账号的旧全量报表仍可能在 TTL 内。
+      await app.get(AiCacheService).invalidateChatDimension('dashboard_metrics');
       const all = (await dashboard().expect(200)).body;
       const baseline = await pool.query(`SELECT count(*)::int AS "companyCount",
         sum(annual_revenue)::float8 AS "totalRevenue", count(DISTINCT lower(btrim(country)))::int AS "countryCount",
@@ -364,7 +366,8 @@ describe('AI多轮对话 HTTP 与数据库', () => {
         { role: 'user', content: '第二问' }, { role: 'assistant', content: '模拟回复' },
         { role: 'user', content: '第三问' },
       ]);
-      expect(await cache.get(key(session))).toHaveLength(3);
+      expect(await cache.get(key(session))).toEqual(['第一问', '第二问', '第三问'].map(user =>
+        expect.objectContaining({ user, assistant: '模拟回复' })));
     } finally { load.mockRestore(); }
   });
 

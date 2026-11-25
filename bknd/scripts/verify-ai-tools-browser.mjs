@@ -10,6 +10,7 @@ import { NestFactory } from '@nestjs/core';
 import { createClient } from '@redis/client';
 import { chromium } from 'playwright-core';
 import { ToolRegistryService } from '../dist/ai/tools/tool-registry.service.js';
+import { benchmarkChatCache } from './benchmark-chat-cache.mjs';
 import { commandProposals, verifyChatCommands } from './verify-chat-commands.mjs';
 import { setupApp } from '../dist/setup-app.js';
 import { PG_POOL } from '../dist/database/database.module.js';
@@ -18,7 +19,7 @@ import { UserManagementService } from '../dist/users/user-management.service.js'
 
 // Check launcher-supplied connections before AppModule can load local .env files.
 const mode = process.argv[2] ?? 'fixture';
-assert.ok(['fixture', 'target'].includes(mode), 'mode must be fixture or target');
+assert.ok(['fixture', 'target', 'benchmark'].includes(mode), 'unknown browser verification mode');
 const database = new URL(process.env.DATABASE_URL);
 const cache = new URL(process.env.REDIS_URL);
 assert.ok(database.hostname === '127.0.0.1' && database.pathname === '/ai_tools_acceptance' &&
@@ -107,7 +108,7 @@ function pick(row, keys) { return Object.fromEntries(keys.map(key => [key, row[k
 
 let app, next, browser, redis;
 async function verify() {
-  if (mode === 'fixture') {
+  if (mode !== 'target') {
     const modelURL = await listen(model);
     Object.assign(process.env, { AI_MODEL_PROVIDER: 'qwen', AI_QWEN_MODEL: 'fixture',
       AI_QWEN_BASE_URL: modelURL, AI_QWEN_API_KEY: 'fixture' });
@@ -171,6 +172,11 @@ async function verify() {
     ('E','Elsewhere',3,'US','London',2018,80,8), ('F','Fourth',4,'UK','London',2018,990,10),
     ('G','Grove',2,'UK','Leeds',2021,200,10)`);
 
+  if (mode === 'benchmark') {
+    await benchmarkChatCache({ app, pool, actor: commandAdmin, send,
+      questions: { query_users: users, query_companies: companies, dashboard_metrics: dashboard } });
+    return;
+  }
   await verifyChatCommands({ admin: commandAdmin, member: commandMember, send, userList, mode,
     registry: mock.method(app.get(ToolRegistryService), 'execute') });
   if (mode === 'target') return;
@@ -237,11 +243,11 @@ async function verify() {
   for (const label of ['公司等级占比环形图', '按成立年份累计公司数量折线图']) await member.page.getByRole('img', { name: label }).waitFor();
   await redis.hSet('ai:tools:enabled', 'query_companies', '1');
   assert.deepEqual((await send(member.page, companies)).last.content, companyContent);
-  assert.equal(companyList.mock.callCount(), callsBeforeDisable + 1);
+  assert.equal(companyList.mock.callCount(), callsBeforeDisable);
   console.log('PASS 公司组合查询、详情、色阶与零员工；开关即时生效、其他工具可用；Dashboard 指标和图表');
 
   await errorTurn(member.page, badPage, '每页条数须为 1 至 100 的整数。');
-  assert.equal(companyList.mock.callCount(), callsBeforeDisable + 1);
+  assert.equal(companyList.mock.callCount(), callsBeforeDisable);
   companyList.mock.mockImplementationOnce(async () => { throw new Error('fixture_database_error'); });
   await errorTurn(member.page, serviceFault, '查询未完成，请稍后重试。');
   const memberAudits = await audits(member);

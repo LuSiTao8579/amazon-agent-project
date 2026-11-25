@@ -16,6 +16,8 @@ import { toolDefinitions, type ChatToolName } from '../src/ai-agent/providers/ch
 import { AI_DATA_SOURCE } from '../src/ai/ai.constants.js';
 import { AiAuditService } from '../src/ai/services/ai-audit.service.js';
 import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.entity.js';
+import { AiCacheService } from '../src/ai/cache/ai-cache.service.js';
+import { CompaniesService } from '../src/companies/companies.service.js';
 import { AiSessionContextCache } from '../src/ai/cache/ai-session-context.cache.js';
 import { ToolRegistryService } from '../src/ai/tools/tool-registry.service.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -247,6 +249,34 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
     expect(dashboard.content.data).toBeNull();
   });
 
+  it('新回合复用规范化后的公司结果，按用户、分页和条件隔离，实际过期后重新查询', async () => {
+    const input = { country, city: ' London ', levels: [3, 2], pageSize: 2 };
+    const equivalent = { ...input, levels: [2, 3], city: 'London', page: 1, sortBy: 'companyCode', sortOrder: 'asc' };
+    const ask = (actor: Actor, query: Record<string, unknown>) => checkedTurn(actor, '查公司', 'query_companies', query);
+    const cache = app.get(AiCacheService);
+    const cached = vi.spyOn(cache, 'getOrLoadChat');
+    const list = vi.spyOn(app.get(CompaniesService), 'list');
+    try {
+      const first = await ask('member', input);
+      expect(list).toHaveBeenCalledTimes(1);
+      const key = cached.mock.calls[0][0];
+      const snapshot = await cache.get(key);
+      expect(snapshot).toMatchObject({ resultType: 'table', data: first.content.data });
+      const next = await ask('member', equivalent);
+      expect(next.id).not.toBe(first.id);
+      expect(next.content).toEqual(first.content);
+      expect(list).toHaveBeenCalledTimes(1);
+      await ask('manager', equivalent);
+      await ask('member', { ...input, page: 2 });
+      await ask('member', { ...input, levels: [2] });
+      expect(list).toHaveBeenCalledTimes(4);
+      await cache.set(key, snapshot!, 1);
+      await vi.waitFor(async () => expect(await cache.get(key)).toBeUndefined(), { timeout: 3000 });
+      expect((await ask('member', equivalent)).content).toEqual(first.content);
+      expect(list).toHaveBeenCalledTimes(5);
+    } finally { cached.mockRestore(); list.mockRestore(); }
+  });
+
   it('聊天工具拒绝身份覆盖，Service 异常只保留安全提示和脱敏审计', async () => {
     const list = vi.spyOn(app.get(UserManagementService), 'list');
     const privateMessage = 'private fixture: backend query failed';
@@ -279,6 +309,8 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
       const exposed = JSON.stringify([rejected.content, failed.content, history.body, items]);
       expect(exposed).not.toContain(searchInput);
       expect(exposed).not.toContain(privateMessage);
+      await checkedTurn('admin', '查用户', 'query_users', { search: searchInput });
+      expect(list).toHaveBeenCalledTimes(2);
     } finally { list.mockRestore(); }
   });
 
@@ -290,7 +322,8 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
     const list = vi.spyOn(service, 'list');
     const requestId = randomUUID();
     try {
-      propose(args);
+      const filters = { ...args, sortBy: 'email' };
+      propose(filters);
       const first = (await run('admin', '查用户', requestId)).body.assistantMessage;
       expect(first.content.data.items).toHaveLength(2);
       const issued = list.mock.calls[0][1];
@@ -303,6 +336,8 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
       const url = '/ai-agent/sessions/' + sessions.get('admin') + '/messages';
       const history = await request(app.getHttpServer()).get(url).auth(tokens.get('admin')!, { type: 'bearer' }).query({ cursor: 'latest' }).expect(200);
       expect(history.body.items[0].content).toEqual(repeat.content);
+      const fresh = await checkedTurn('admin', '查用户', 'query_users', filters, 'FORBIDDEN');
+      expect(fresh.content.data).toBeNull();
       expect(list).not.toHaveBeenCalled();
     } finally {
       list.mockRestore();

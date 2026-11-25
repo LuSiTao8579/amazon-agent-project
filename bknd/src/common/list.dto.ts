@@ -40,6 +40,13 @@ export function searchPattern(search = '') {
   return '%' + search.trim().replace(/[\\%_]/g, '\\$&') + '%';
 }
 
+export function listSort(query: { sortBy?: string; sortOrder?: 'asc' | 'desc' }, defaultKey: string, defaultOrder: 'asc' | 'desc') {
+  return {
+    sortBy: query.sortBy === undefined ? defaultKey : query.sortBy,
+    sortOrder: query.sortOrder === undefined ? (query.sortBy === undefined ? defaultOrder : 'asc') : query.sortOrder,
+  };
+}
+
 /** ORDER BY 只取业务白名单中的列名，方向来自固定字面值，主键打破同值排序。 */
 export function listOrderBy(
   query: { sortBy?: string; sortOrder?: 'asc' | 'desc' },
@@ -48,9 +55,8 @@ export function listOrderBy(
   defaultOrder: 'asc' | 'desc',
   primaryColumn: string,
 ): string {
-  const key = query.sortBy === undefined ? defaultKey : query.sortBy;
+  const { sortBy: key, sortOrder: order } = listSort(query, defaultKey, defaultOrder);
   if (typeof key !== 'string' || !Object.hasOwn(columns, key)) throw new BadRequestException('不支持的排序字段');
-  const order = query.sortOrder === undefined ? (query.sortBy === undefined ? defaultOrder : 'asc') : query.sortOrder;
   if (order !== 'asc' && order !== 'desc') throw new BadRequestException('不支持的排序方向');
   const column = columns[key];
   const tieBreak = column === primaryColumn ? '' : `, ${primaryColumn} ASC`;

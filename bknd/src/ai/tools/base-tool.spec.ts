@@ -58,7 +58,7 @@ describe('工具身份与业务参数', () => {
       ],
       controllers: [ExampleController],
     }).overrideModule(AiAuditModule).useModule(TestAuditModule).overrideProvider(UsersService).useValue({ findById })
-      .overrideProvider(AiCacheService).useValue({ isToolEnabled })
+      .overrideProvider(AiCacheService).useValue({ isToolEnabled, getOrLoadChat: (_query: unknown, load: () => Promise<unknown>) => load() })
       .overrideProvider(CompaniesService).useValue(companies)
       .overrideProvider(DashboardService).useValue(dashboard)
       .overrideProvider(UserManagementService).useValue({ list }).compile();

@@ -135,7 +135,7 @@ export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
   }
 
   /** 仅用于可复用的业务查询。业务异常原样抛出；缓存不可用时仍执行查询。 */
-  async getOrLoadChat(query: AiChatResultQuery, load: () => Promise<AiCacheValue>): Promise<AiCacheValue> {
+  async getOrLoadChat<T extends AiCacheValue>(query: AiChatResultQuery, load: () => Promise<T>): Promise<T> {
     if (query.kind !== 'chat' || query.conditions === undefined) throw new TypeError('可复用聊天查询需要显式传入 conditions');
     const ttl = this.ttl(query);
     let name: string | undefined;
@@ -148,7 +148,7 @@ export class AiCacheService implements OnModuleInit, OnApplicationShutdown {
           condition: 'NX', GET: true, expiration: { type: 'EX', value: ttl },
         }));
         const hit = this.decodeValue('chat', previous);
-        if (hit !== undefined) return hit;
+        if (hit !== undefined) return hit as T;
         expected = previous ?? marker;
       }
     } catch (error) {

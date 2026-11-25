@@ -15,6 +15,6 @@ import { ToolRegistryService } from './tool-registry.service.js';
 @Module({
   imports: [AiAuditModule, DiscoveryModule, AiCacheModule, UsersModule, UserManagementModule, CompaniesModule, DashboardModule],
   providers: [{ provide: TOOL_EXECUTOR, useExisting: ToolRegistryService }, ToolPolicyService, ToolRegistryService, QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool, ExampleCountUsersTool],
-  exports: [TOOL_EXECUTOR, ToolRegistryService, ToolPolicyService, ExampleCountUsersTool],
+  exports: [AiCacheModule, TOOL_EXECUTOR, ToolRegistryService, ToolPolicyService, ExampleCountUsersTool],
 })
 export class AiToolsModule {}
