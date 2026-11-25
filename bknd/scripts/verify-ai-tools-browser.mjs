@@ -9,12 +9,16 @@ import { mock } from 'node:test';
 import { NestFactory } from '@nestjs/core';
 import { createClient } from '@redis/client';
 import { chromium } from 'playwright-core';
+import { ToolRegistryService } from '../dist/ai/tools/tool-registry.service.js';
+import { commandProposals, verifyChatCommands } from './verify-chat-commands.mjs';
 import { setupApp } from '../dist/setup-app.js';
 import { PG_POOL } from '../dist/database/database.module.js';
 import { CompaniesService } from '../dist/companies/companies.service.js';
 import { UserManagementService } from '../dist/users/user-management.service.js';
 
 // Check launcher-supplied connections before AppModule can load local .env files.
+const mode = process.argv[2] ?? 'fixture';
+assert.ok(['fixture', 'target'].includes(mode), 'mode must be fixture or target');
 const database = new URL(process.env.DATABASE_URL);
 const cache = new URL(process.env.REDIS_URL);
 assert.ok(database.hostname === '127.0.0.1' && database.pathname === '/ai_tools_acceptance' &&
@@ -31,6 +35,7 @@ const badPage = '查英国公司，每页 101 家';
 const serviceFault = '查公司服务异常示例';
 const modelFault = '测试模型暂不可用';
 const proposals = new Map([
+  ...commandProposals,
   [users, ['query_users', userQuery]], [companies, ['query_companies', companyQuery]],
   [dashboard, ['dashboard_metrics', dashboardQuery]], [badPage, ['query_companies', { pageSize: 101 }]],
   [serviceFault, ['query_companies', { search: 'private@example.test' }]],
@@ -77,11 +82,14 @@ async function http(base, path, { token, body, expected = body ? 201 : 200 } = {
 async function send(page, text) {
   await page.getByRole('textbox', { name: '输入消息' }).fill(text);
   const [turn, history] = await Promise.all([
-    page.waitForResponse(r => r.url().endsWith('/turns') && r.request().method() === 'POST'),
-    page.waitForResponse(r => r.url().includes('/api/ai-chat/history')),
+    page.waitForResponse(r => r.url().endsWith('/turns') && r.request().method() === 'POST', { timeout: mode === 'target' ? 75000 : 10000 }),
+    page.waitForResponse(r => r.url().includes('/api/ai-chat/history'), { timeout: mode === 'target' ? 75000 : 10000 }),
     page.getByRole('button', { name: '发送消息' }).click(),
   ]);
-  assert.equal(turn.status(), 201);
+  if (turn.status() !== 201) {
+    const last = (await history.json()).messages?.at(-1);
+    throw new Error('聊天回合 HTTP ' + turn.status() + '，' + (last?.turnStatus ?? '未完成'));
+  }
   assert.deepEqual(await turn.json(), { status: 'completed' });
   assert.equal(history.status(), 200);
   const { messages } = await history.json();
@@ -98,10 +106,15 @@ async function errorTurn(page, question, expected) {
 function pick(row, keys) { return Object.fromEntries(keys.map(key => [key, row[key]])); }
 
 let app, next, browser, redis;
-try {
-  const modelURL = await listen(model);
-  Object.assign(process.env, { AI_MODEL_PROVIDER: 'qwen', AI_QWEN_MODEL: 'fixture',
-    AI_QWEN_BASE_URL: modelURL, AI_QWEN_API_KEY: 'fixture' });
+async function verify() {
+  if (mode === 'fixture') {
+    const modelURL = await listen(model);
+    Object.assign(process.env, { AI_MODEL_PROVIDER: 'qwen', AI_QWEN_MODEL: 'fixture',
+      AI_QWEN_BASE_URL: modelURL, AI_QWEN_API_KEY: 'fixture' });
+  } else {
+    const provider = (process.env.AI_MODEL_PROVIDER || 'qwen').trim().toUpperCase();
+    console.log('目标模型', provider, process.env['AI_' + provider + '_MODEL']);
+  }
   app = await NestFactory.create(AppModule, { logger: false });
   setupApp(app);
   await app.listen(0, '127.0.0.1');
@@ -116,7 +129,7 @@ try {
   await new Promise(resolve => portProbe.close(resolve));
   next = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-H', '127.0.0.1',
     '-p', new URL(frontend).port], { cwd: '../ftnd', stdio: ['ignore', 'ignore', 'inherit'],
-    env: { ...process.env, BACKEND_URL: backend, APP_ORIGIN: frontend } });
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('AI_'))), BACKEND_URL: backend, APP_ORIGIN: frontend } });
   for (let i = 0; i < 100; i++) {
     if (await fetch(frontend + '/login').then(r => r.ok).catch(() => false)) break;
     assert.ok(next.exitCode === null && i !== 99, 'frontend startup failed');
@@ -138,18 +151,19 @@ try {
       body: { title: admin ? '管理员演示' : '普通用户演示' } });
     const page = await ctx.newPage();
     page.setDefaultTimeout(10000);
+    if (mode === 'target') page.setDefaultNavigationTimeout(75000);
     await page.goto(frontend + '/order');
     await openChat(page);
     await page.getByText('当前会话：' + session.title, { exact: true }).waitFor();
     return { id: user.id, token, page, session, ctx, get };
   }
-  const admin = await account('admin@example.test', true);
-  const member = await account('member@example.test', false);
+  const commandAdmin = await account('command-admin@example.test', true);
+  const commandMember = await account('command-member@example.test', false);
   for (const [i, [name, role, status]] of [
     ['Lin A', 'Manager', 'inactive'], ['Lin B', 'Analyst', 'inactive'], ['Lin C', 'Manager', 'inactive'],
     ['Lin D', 'Analyst', 'inactive'], ['Lin E', 'Member', 'inactive'], ['Lin F', 'Analyst', 'active'],
-    ['Other', 'Manager', 'inactive'],
-  ].entries()) await http(backend, '/users', { token: admin.token, body: {
+    ['Other', 'Manager', 'inactive'], ['Ada', 'Analyst', 'active'],
+  ].entries()) await http(backend, '/users', { token: commandAdmin.token, body: {
     name, role, status, email: 'sample' + i + '@example.test', password: randomUUID() } });
   await pool.query(`INSERT INTO companies(company_code,company_name,level,country,city,founded_year,annual_revenue,employees) VALUES
     ('A','Alpha',2,'UK','London',2018,200,2), ('B','Beta',3,'UK','London',2020,500,1),
@@ -157,6 +171,13 @@ try {
     ('E','Elsewhere',3,'US','London',2018,80,8), ('F','Fourth',4,'UK','London',2018,990,10),
     ('G','Grove',2,'UK','Leeds',2021,200,10)`);
 
+  await verifyChatCommands({ admin: commandAdmin, member: commandMember, send, userList, mode,
+    registry: mock.method(app.get(ToolRegistryService), 'execute') });
+  if (mode === 'target') return;
+  await commandAdmin.ctx.close();
+  await commandMember.ctx.close();
+  const admin = await account('admin@example.test', true);
+  const member = await account('member@example.test', false);
   const { last: userTable, request: submitted, messages: original } = await send(admin.page, users);
   const baseline = await admin.get('/users?' + new URLSearchParams(userQuery));
   assert.deepEqual([userTable.type, userTable.content.tableType, baseline.total], ['table', 'users', 4]);
@@ -265,6 +286,10 @@ try {
   await page.getByRole('img', { name: '公司等级占比环形图' }).waitFor();
   assert.deepEqual((await (await member.ctx.request.get(savedURL)).json()).messages, history.messages);
   console.log('PASS 刷新、跨会话切换与历史恢复，两账号聊天全链路验收通过');
+}
+
+try {
+  await verify();
 } finally {
   await browser?.close();
   next?.kill();

@@ -3,6 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+mode=${1:-fixture}
+case "$mode" in
+  fixture|target) ;;
+  *) echo 'Usage: verify-ai-tools-browser.sh [fixture|target]' >&2; exit 2 ;;
+esac
+
 npm run build
 npm --prefix ../ftnd run build
 
@@ -32,4 +38,8 @@ pg_addr=$(docker port "$postgres" 5432/tcp)
 redis_addr=$(docker port "$redis" 6379/tcp)
 export DATABASE_URL="postgres://app:$POSTGRES_PASSWORD@$pg_addr/ai_tools_acceptance" REDIS_URL="redis://$redis_addr/0"
 npm run db:migrate
-node scripts/verify-ai-tools-browser.mjs
+if [[ "$mode" == target && -n "${AI_TEST_MODEL_ENV:-}" ]]; then
+  node --env-file="$AI_TEST_MODEL_ENV" scripts/verify-ai-tools-browser.mjs target
+else
+  node scripts/verify-ai-tools-browser.mjs "$mode"
+fi
