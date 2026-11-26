@@ -17,7 +17,7 @@
 }
 ```
 
-记录还包含由认证上下文提供的 `userId`、`ip` 和数据库生成的 `createdAt`。表格摘要区分本页行数和匹配总数，图表摘要记录数据点数，文本和报表记录类型及结果码。查询原文、业务行和异常详情都不进入摘要。入参保留嵌套对象和数组的结构、有效分页值和已知枚举；联系方式、金额及自由文本用 `[REDACTED]` 表示。快照限制深度和大小。[脱敏与摘要实现](../bknd/src/ai/tools/tool-audit-data.ts)
+记录还包含由认证上下文提供的 `userId`、`ip` 和数据库生成的 `createdAt`。表格摘要区分本页行数和匹配总数，图表摘要记录数据点数，文本和报表记录类型及结果码。查询原文、业务行和异常详情都不进入摘要。入参保留已知筛选结构、有效分页值和已知枚举。未知属性名替换为位置标签，其值整体遮盖。联系方式、金额及自由文本用 `[REDACTED]` 表示。快照限制深度和大小。[脱敏与摘要实现](../bknd/src/ai/tools/tool-audit-data.ts)
 
 | 执行情况 | result | resultSummary.code |
 | --- | --- | --- |
@@ -39,3 +39,5 @@
 ## 迁移与验证
 
 在目标环境启动新后端前，从 `bknd/` 执行 `npm run db:migrate`。迁移 0008 给现有审计表增加四个可空字段，旧记录可原样读取，原有外键与只追加保护继续生效。在配置了 Docker 的测试环境可运行 `bash scripts/verify-ai-foundation.sh`，验证历史记录升级，以及真实 PostgreSQL、Redis 和 HTTP 审计路径。[迁移](../bknd/migrations/0008_ai_tool_audit.sql) · [端到端验收](../bknd/test/tool-registry.e2e-spec.ts)
+
+第三周验收按请求核对注册中心、已提交数据库行和审计 API 的增量，并检查合成敏感值。[逐项结果与复跑命令](ai-week3-audit-verification.md)

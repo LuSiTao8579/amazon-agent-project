@@ -103,6 +103,7 @@ import { NestFactory } from '@nestjs/core';
 import request from 'supertest';
 import { AppModule } from './dist/app.module.js';
 import { setupApp } from './dist/setup-app.js';
+import { verifyToolAudits } from './scripts/verify-ai-tool-audits.mjs';
 import { verifyAiStorage } from './scripts/verify-ai-storage.mjs';
 
 const app = await NestFactory.create(AppModule, { logger: false });
@@ -136,6 +137,7 @@ try {
   assert.equal(saved.body.resourceId, session.id);
   assert.equal(saved.body.userId, session.userId);
   await verifyAiStorage(app, http, bearer);
+  await verifyToolAudits(app, http, bearer);
 } finally {
   await app.close();
 }

@@ -9,14 +9,21 @@ const enums: Record<string, readonly string[]> = {
     'city', 'foundedYear', 'annualRevenue', 'employees', 'revenuePerEmployee'],
 };
 const numberLimits: Record<string, number> = { page: 1000000, pageSize: 100, levels: 100 };
-const sensitive = /mail|phone|mobile|contact|revenue|amount|profit|price|cost|salary|password|token|secret|邮箱|电话|手机|联系|金额|收入|营收|盈利|利润/i;
+// JSON 属性名也来自模型输入。只保留固定的诊断字段名，未知字段整项遮盖。
+const maskedFields = new Set([
+  'search', 'country', 'city', 'userId', 'foundedYearFrom', 'foundedYearTo', 'view', 'charts',
+  'email', 'phone', 'contact', 'annual_revenue', 'annualRevenue', 'revenuePerEmployee', 'totalRevenue',
+  'password', 'token',
+]);
+const groups = new Set(['filters', 'metrics']);
+const knownFields = new Set([...Object.keys(enums), ...Object.keys(numberLimits), ...maskedFields, ...groups, 'isAdmin']);
 
 export function redactToolArgs(args: unknown): AuditValue {
   let remaining = 200;
   function visit(value: unknown, field: string, depth: number): AuditValue {
     if (--remaining < 0 || depth > 8) return '[TRUNCATED]';
-    if (sensitive.test(field)) return masked;
-    if (value === null || typeof value === 'boolean') return value;
+    if (depth > 0 && (!knownFields.has(field) || maskedFields.has(field))) return masked;
+    if (value === null || (field === 'isAdmin' && typeof value === 'boolean')) return value;
     if (Array.isArray(value)) {
       const items: AuditValue[] = [];
       for (const item of value) {
@@ -26,13 +33,13 @@ export function redactToolArgs(args: unknown): AuditValue {
       return items;
     }
     if (typeof value === 'object') {
+      if (depth > 0 && !groups.has(field)) return masked;
       const result: Record<string, AuditValue> = Object.create(null);
       let index = 0;
       for (const key in value) {
         if (!Object.hasOwn(value, key)) continue;
         if (remaining <= 0) { result.truncated = true; break; }
-        // 避免非法入参把邮件或电话藏在 JSON 属性名中。
-        const label = /^[a-zA-Z_\p{Script=Han}]{1,48}$/u.test(key) ? key : `field_${index}`;
+        const label = knownFields.has(key) ? key : `field_${index}`;
         index++;
         result[label] = visit((value as Record<string, unknown>)[key], key, depth + 1);
       }
