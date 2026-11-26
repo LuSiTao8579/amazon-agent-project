@@ -138,6 +138,23 @@ describe('AI 数据表迁移 (真实 PostgreSQL)', () => {
     await expectDatabaseError('DELETE FROM users WHERE id=$1', [userId], '23503');
   });
 
+  it('记忆、任务和审计拒绝重复主键及缺失的必填字段', async () => {
+    const id = randomUUID();
+    const statements = [
+      "INSERT INTO ai_user_memory(id,user_id,content) VALUES ($1,$2,'记忆')",
+      "INSERT INTO ai_task_record(id,user_id,name) VALUES ($1,$2,'任务')",
+      "INSERT INTO ai_operation_audit(id,user_id,action,resource_type,result) VALUES ($1,$2,'read','task','success')",
+    ];
+    for (const sql of statements) {
+      await runner.query(sql, [id, userId]);
+      await expectDatabaseError(sql, [id, userId], '23505');
+    }
+    await expectDatabaseError('INSERT INTO ai_user_memory(user_id) VALUES ($1)', [userId], '23502');
+    await expectDatabaseError('INSERT INTO ai_task_record(user_id) VALUES ($1)', [userId], '23502');
+    await expectDatabaseError("INSERT INTO ai_operation_audit(user_id,action,result) VALUES ($1,'read','success')", [userId], '23502');
+    await expectDatabaseError("INSERT INTO ai_operation_audit(action,resource_type,result) VALUES ('read','tool','success')", [], '23514');
+  });
+
   it('记忆、任务和审计分别阻止删除其所属用户', async () => {
     const inserts = [
       "INSERT INTO ai_user_memory(user_id,content) VALUES ($1,'memory')",
