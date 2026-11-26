@@ -39,7 +39,12 @@ export class UserManagementService {
     return user;
   }
 
+  async validateCreate(input: CreateUserDto) {
+    if (await this.users.findByEmail(input.email)) throw new ConflictException('Email already registered');
+  }
+
   async create(input: CreateUserDto) {
+    await this.validateCreate(input);
     // 只传递明确需要的字段；明文密码不会传给数据库层。
     return this.users.create({
       email: input.email,
@@ -50,12 +55,23 @@ export class UserManagementService {
     });
   }
 
-  async update(id: string, input: UpdateUserDto) {
+  async validateUpdate(id: string, input: UpdateUserDto) {
     const entries = Object.entries(input).filter(([, value]) => value !== undefined);
     if (!entries.length) throw new BadRequestException('至少提供一个需要修改的字段');
     // 列名来自 DTO 固定白名单，值使用参数；不允许用请求字段拼任意 SQL。
     const allowed = new Set(['name', 'email', 'role', 'status']);
     if (entries.some(([key]) => !allowed.has(key))) throw new BadRequestException('不支持的修改字段');
+    const target = await this.get(id);
+    if (target.isAdmin) throw new ForbiddenException('管理员账号不能通过用户管理页面编辑');
+    if (input.email !== undefined) {
+      const owner = await this.users.findByEmail(input.email);
+      if (owner && owner.id !== target.id) throw new ConflictException('该邮箱已注册');
+    }
+    return entries;
+  }
+
+  async update(id: string, input: UpdateUserDto) {
+    const entries = await this.validateUpdate(id, input);
     const assignments = entries.map(([key], index) => `${key} = $${index + 2}`).join(', ');
     try {
       const { rows } = await this.pool.query<PublicUser>(
@@ -72,15 +88,25 @@ export class UserManagementService {
     }
   }
 
+  async validateRemove(ids: string[], transaction?: pg.PoolClient) {
+    const db = transaction ?? this.pool;
+    const { rows } = await db.query<{ is_admin: boolean }>(
+      'SELECT is_admin FROM users WHERE id = ANY($1::uuid[]) ORDER BY id' + (transaction ? ' FOR UPDATE' : ''), [ids]);
+    if (rows.length !== ids.length) throw new NotFoundException('部分用户不存在，请刷新列表');
+    if (rows.some(user => user.is_admin)) throw new ForbiddenException('不能删除管理员账号');
+    const references = await db.query(`SELECT 1 WHERE
+      EXISTS (SELECT 1 FROM ai_chat_sessions WHERE user_id = ANY($1::uuid[])) OR
+      EXISTS (SELECT 1 FROM ai_user_memory WHERE user_id = ANY($1::uuid[])) OR
+      EXISTS (SELECT 1 FROM ai_task_record WHERE user_id = ANY($1::uuid[])) OR
+      EXISTS (SELECT 1 FROM ai_operation_audit WHERE user_id = ANY($1::uuid[]))`, [ids]);
+    if (references.rows.length) throw new ConflictException('待删除用户仍有关联记录，无法删除');
+  }
+
   async remove(ids: string[]) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      // 锁定并完整检查后才删除，避免批量操作删除一半才发现另一条不允许删除。
-      const { rows } = await client.query<{ id: string; is_admin: boolean }>(
-        'SELECT id, is_admin FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE', [ids]);
-      if (rows.length !== ids.length) throw new NotFoundException('部分用户不存在，请刷新列表');
-      if (rows.some((user) => user.is_admin)) throw new ForbiddenException('不能删除管理员账号');
+      await this.validateRemove(ids, client);
       const result = await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [ids]);
       await client.query('COMMIT');
       return { deleted: result.rowCount };

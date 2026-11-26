@@ -45,7 +45,13 @@ export class CompaniesService {
     return rows[0];
   }
 
+  async validateCreate(input: CreateCompanyDto) {
+    const existing = await this.pool.query('SELECT 1 FROM companies WHERE company_code = $1', [input.companyCode]);
+    if (existing.rows.length) throw new ConflictException('公司编码已存在');
+  }
+
   async create(input: CreateCompanyDto) {
+    await this.validateCreate(input);
     try {
       const { rows } = await this.pool.query(
         `INSERT INTO companies (company_code, company_name, level, country, city, founded_year, annual_revenue, employees)
@@ -58,10 +64,16 @@ export class CompaniesService {
     }
   }
 
-  async update(code: string, input: UpdateCompanyDto) {
+  async validateUpdate(code: string, input: UpdateCompanyDto) {
     const entries = Object.entries(input).filter(([, value]) => value !== undefined);
     if (!entries.length) throw new BadRequestException('至少提供一个需要修改的字段');
     if (entries.some(([key]) => !Object.hasOwn(FIELD_COLUMNS, key))) throw new BadRequestException('不支持的修改字段');
+    await this.get(code);
+    return entries;
+  }
+
+  async update(code: string, input: UpdateCompanyDto) {
+    const entries = await this.validateUpdate(code, input);
     const columns = entries.map(([key], index) => `${FIELD_COLUMNS[key]} = $${index + 2}`).join(', ');
     const { rows } = await this.pool.query(
       `UPDATE companies SET ${columns} WHERE company_code = $1 RETURNING ${COLUMNS}`,
@@ -70,15 +82,19 @@ export class CompaniesService {
     return rows[0];
   }
 
+  async validateRemove(code: string, transaction?: pg.PoolClient) {
+    const db = transaction ?? this.pool;
+    const target = await db.query('SELECT 1 FROM companies WHERE company_code = $1' + (transaction ? ' FOR UPDATE' : ''), [code]);
+    if (!target.rows.length) throw new NotFoundException('公司不存在');
+    const related = await db.query('SELECT 1 FROM relationships WHERE company_code = $1 OR parent_company = $1 LIMIT 1', [code]);
+    if (related.rows.length) throw new ConflictException('公司仍有关联关系，不能删除；请先处理关系数据');
+  }
+
   async remove(code: string) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      // 不自动级联删供应链关系。锁住公司，外键也会阻止并发插入悬空关联。
-      const locked = await client.query('SELECT company_code FROM companies WHERE company_code = $1 FOR UPDATE', [code]);
-      if (!locked.rows.length) throw new NotFoundException('公司不存在');
-      const related = await client.query('SELECT 1 FROM relationships WHERE company_code = $1 OR parent_company = $1 LIMIT 1', [code]);
-      if (related.rows.length) throw new ConflictException('公司仍有关联关系，不能删除；请先处理关系数据');
+      await this.validateRemove(code, client);
       await client.query('DELETE FROM companies WHERE company_code = $1', [code]);
       await client.query('COMMIT');
       return { deleted: 1 };

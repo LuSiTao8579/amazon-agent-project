@@ -11,6 +11,7 @@ import { dispatchTool } from './tool-executor.js';
 import { redactToolArgs } from './tool-audit-data.js';
 import { toolErrorResult, toolFailure } from './tool-result.js';
 
+import { WritePrevalidationService } from './write/write-prevalidation.service.js';
 import { BaseWriteTool, WriteToolInterceptor, type WritePhase } from './write/base-write-tool.js';
 import { writeMetadata } from './write/write-tool.decorator.js';
 
@@ -24,6 +25,7 @@ export class ToolRegistryService implements OnModuleInit {
 
   constructor(@Inject(DiscoveryService) private readonly discovery: DiscoveryService,
     @Inject(ToolPolicyService) private readonly policy: ToolPolicyService,
+    @Inject(WritePrevalidationService) private readonly prevalidation: WritePrevalidationService,
     @Inject(AiAuditService) private readonly audit: AiAuditService) {}
 
   onModuleInit() {
@@ -39,7 +41,7 @@ export class ToolRegistryService implements OnModuleInit {
           throw new Error(target.name + ' 必须是独立的 @WriteTool 单例');
         }
         if (entries.has(write.name) || writes.has(write.name)) throw new Error('重复的工具名称：' + write.name);
-        writes.set(write.name, new WriteToolInterceptor(write, provider.instance, this.policy));
+        writes.set(write.name, new WriteToolInterceptor(write, provider.instance, this.prevalidation));
         continue;
       }
       if (!(target.prototype instanceof BaseTool) && !readToolMetadata(target)) continue;
@@ -61,7 +63,7 @@ export class ToolRegistryService implements OnModuleInit {
     return this.writes.get(name)?.meta;
   }
 
-  async prepareWrite(name: string, phase: WritePhase, context: ToolContext | undefined, args: unknown) {
+  async prepareWrite(name: string, phase: WritePhase, context: ToolContext | undefined, args: unknown, target?: string) {
     const entry = this.writes.get(name);
     const validPhase = phase === 'validate' || phase === 'preview';
     const action = entry && { name: entry.meta.name, permission: entry.meta.target + '.' + entry.meta.operation +
@@ -71,7 +73,7 @@ export class ToolRegistryService implements OnModuleInit {
     try {
       requireToolContext(context);
       if (!entry) throw new NotFoundException('写工具不存在');
-      prepared = await entry.prepare(phase, context, args);
+      prepared = await entry.prepare(phase, context, args, target);
     } catch (error) {
       await this.audit.recordToolExecution(context, action, input, toolErrorResult(error));
       throw error;

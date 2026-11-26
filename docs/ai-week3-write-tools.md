@@ -26,3 +26,13 @@ bash bknd/scripts/verify-ai-foundation.sh
 ```
 
 [基类与准备流程](../bknd/src/ai/tools/write/base-write-tool.ts) · [注册中心](../bknd/src/ai/tools/tool-registry.service.ts) · [可运行的示例与 HTTP 验收](../bknd/test/read-tool-api.e2e-spec.ts)
+
+## 第七步 · 共用业务预校验
+
+后端通过 `registry.prepareWrite(name, phase, request.toolContext, body, target)` 调度。工具可用 `targetParam` 声明用户 ID 或公司编码。用户 ID 复用原接口的 ParseUUIDPipe，公司编码按原接口作为字符串处理。单删使用 NoWriteBody，批量删除沿用 DeleteUsersDto 的 ids 数组。执行人始终取自 JWT 签发的上下文。
+
+统一服务先复核当前管理员权限，再校验路径、用业务 dtoPipe 转换请求体，并调用工具绑定的业务校验。用户和公司 Service 均提供 validateCreate、validateUpdate、validateRemove；用户批删与单删共用 validateRemove。邮箱占用、管理员保护、目标存在性、用户引用及公司上下游关系检查由业务模块维护。校验抛出的 Nest 异常原样向上传递。创建用户的重复邮箱文案沿用英文，更新用户的重复邮箱文案沿用中文。
+
+预校验只读数据库。真正删除时在原事务内锁定目标，再复核规则；并发创建或更新仍由唯一约束兜底。预校验成功仅说明检查当时允许继续预览。
+
+配对测试通过测试专用 HTTP 入口调用同一个注册中心，对照实际管理接口的状态码和完整响应体；每组回读测试用户、公司及关系数据。可使用上方的隔离验收命令复跑。[统一预校验服务](../bknd/src/ai/tools/write/write-prevalidation.service.ts) · [HTTP 对照用例](../bknd/test/write-prevalidation.e2e-spec.ts)

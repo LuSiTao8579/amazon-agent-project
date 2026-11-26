@@ -362,7 +362,8 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
       expect(history.body.items[0].content).toEqual(failed.content);
 
       const audits = await http.get('/ai/audits').auth(tokens.get('admin')!, { type: 'bearer' })
-        .query({ result: 'failure' }).expect(200);
+        .query({ result: 'failure', pageSize: 100 }).expect(200);
+      expect(audits.body.hasMore).toBe(false);
       const items = audits.body.items as AiOperationAuditEntity[];
       expect(items).toEqual(expect.arrayContaining([
         expect.objectContaining({ userId: actors.admin, toolName: 'query_users', inputParams: { userId: '[REDACTED]', isAdmin: true, search: '[REDACTED]' },
