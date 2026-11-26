@@ -1,11 +1,10 @@
 import { Logger } from '@nestjs/common';
-import type { AiAuditService } from '../services/ai-audit.service.js';
-import type { ToolMetadata } from './tool.decorator.js';
+import type { AiAuditService, AuditToolIdentity } from '../services/ai-audit.service.js';
 import type { ExecuteTool } from './tool-executor.js';
 import { redactToolArgs } from './tool-audit-data.js';
 import { toolErrorResult, toolFailure } from './tool-result.js';
 
-export function AuditToolExecution<T>(resolve: (owner: T, name: string) => { audit: AiAuditService; tool?: ToolMetadata }) {
+export function AuditToolExecution<T>(resolve: (owner: T, name: string) => { audit: AiAuditService; tool?: AuditToolIdentity }) {
   return (_target: T, _key: string, descriptor: TypedPropertyDescriptor<ExecuteTool>) => {
     const execute = descriptor.value!;
     descriptor.value = async function (this: T, name, context, args) {

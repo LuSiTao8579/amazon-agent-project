@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import { Inject, type INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
@@ -17,6 +17,7 @@ import { AI_DATA_SOURCE } from '../src/ai/ai.constants.js';
 import { AiAuditService } from '../src/ai/services/ai-audit.service.js';
 import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.entity.js';
 import { AiCacheService } from '../src/ai/cache/ai-cache.service.js';
+import { CompaniesModule } from '../src/companies/companies.module.js';
 import { CompaniesService } from '../src/companies/companies.service.js';
 import { AiSessionContextCache } from '../src/ai/cache/ai-session-context.cache.js';
 import { ToolRegistryService } from '../src/ai/tools/tool-registry.service.js';
@@ -24,6 +25,23 @@ import { UsersService } from '../src/users/users.service.js';
 import { UserManagementService } from '../src/users/user-management.service.js';
 import { UserListDto } from '../src/users/user-management.dto.js';
 import type { PublicUser } from '../src/users/user.types.js';
+
+import { PickType } from '@nestjs/swagger';
+import { CreateCompanyDto } from '../src/companies/company.dto.js';
+import { BaseWriteTool, executionClosed, rollbackUnsupported } from '../src/ai/tools/write/base-write-tool.js';
+import { WriteTool } from '../src/ai/tools/write/write-tool.decorator.js';
+import type { ToolContext } from '../src/jwt-auth.guard.js';
+
+class LevelChange extends PickType(CreateCompanyDto, ['companyCode', 'level'] as const) {}
+@WriteTool({ name: 'testCompanyLevel', target: 'company', operation: 'update' })
+class TestLevelTool extends BaseWriteTool<LevelChange> {
+  readonly inputDto = LevelChange;
+  readonly execute = executionClosed;
+  readonly rollback = rollbackUnsupported;
+  constructor(@Inject(CompaniesService) private readonly companies: CompaniesService) { super(); }
+  protected async validate(_actor: ToolContext, input: LevelChange) { await this.companies.get(input.companyCode); }
+  protected getPreview() { return ['level'] as const; }
+}
 
 describe('三类只读工具与业务 HTTP 接口对照', () => {
   const search = 'step8-' + randomUUID();
@@ -88,7 +106,7 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
   }
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({ imports: [AppModule] })
+    const mod = await Test.createTestingModule({ imports: [AppModule, CompaniesModule], providers: [TestLevelTool] })
       .overrideProvider(ModelService).useValue({ chat })
       .overrideProvider(AiAuditService).useFactory({
         inject: [getDataSourceToken(AI_DATA_SOURCE), UsersService],
@@ -138,6 +156,52 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
         await db.query('DELETE FROM users WHERE id=ANY($1::uuid[])', [ids]);
       }
     } finally { await app?.close(); }
+  });
+
+  it('写工具允许受控预览，管理员聊天、只读调度和直接调用均无法提交', async () => {
+    const write = app.get(TestLevelTool);
+    const registry = app.get(ToolRegistryService);
+    const service = app.get(CompaniesService);
+    const update = vi.spyOn(service, 'update');
+    const dispatch = vi.spyOn(registry, 'execute');
+    const enabled = vi.spyOn(app.get(AiCacheService), 'isToolEnabled').mockResolvedValue(true);
+    const name = 'testCompanyLevel';
+    const args = { companyCode: companyCodes[0], level: 7 };
+    try {
+      expect(registry.describeWrite(name)).toMatchObject({ kind: 'write', autoExecute: false });
+      // 固定模型返回候选清单以外的名称，模拟异常提案经过真实聊天调度。
+      chat.mockImplementationOnce(async (_messages, names) => {
+        expect(names).not.toContain(name);
+        return { tool: name as ChatToolName, args };
+      });
+      expect((await run('admin', '修改公司等级')).body.assistantMessage.content.code).toBe('TOOL_UNAVAILABLE');
+      const ctx = dispatch.mock.calls[0][1]!;
+      expect(await registry.findByName(name, ctx)).toBeUndefined();
+      expect((await registry.listAvailable(ctx)).map(tool => tool.name)).not.toContain(name);
+      expect((await registry.execute(name, ctx, args)).code).toBe('TOOL_UNAVAILABLE');
+      expect(await registry.prepareWrite(name, 'validate', ctx, args)).toEqual({ validated: true });
+      expect(await registry.prepareWrite(name, 'preview', ctx, args)).toEqual({
+        target: 'company', operation: 'update', changedFields: ['level'],
+      });
+      await expect(registry.prepareWrite(name, 'preview', ctx, { ...args, password: 'private' })).rejects.toMatchObject({ status: 400 });
+      await expect(registry.prepareWrite(name, 'preview', ctx, { ...args, companyCode: 'missing' })).rejects.toMatchObject({ status: 404 });
+      await expect(registry.prepareWrite(name, 'preview', { ...ctx }, args)).rejects.toMatchObject({ status: 401 });
+      const writeAudits = (await auditItems('admin')).filter(row => row.toolName === name);
+      expect(writeAudits.filter(row => row.action === 'tool.execute')).toHaveLength(2);
+      expect(writeAudits.filter(row => row.action === 'company.update.preview')).toHaveLength(3);
+      expect(JSON.stringify(writeAudits)).not.toContain('private');
+      await db.query('UPDATE users SET is_admin=false WHERE id=$1', [ctx.userId]);
+      await expect(registry.prepareWrite(name, 'preview', ctx, args)).rejects.toMatchObject({ status: 403 });
+      expect(await write.execute(ctx, args)).toEqual({ code: 'WRITE_EXECUTION_DISABLED' });
+      expect(await write.rollback(ctx, randomUUID())).toEqual({ code: 'ROLLBACK_UNSUPPORTED' });
+      expect(update).not.toHaveBeenCalled();
+      expect((await service.get(args.companyCode)).level).toBe(2);
+    } finally {
+      await db.query('UPDATE users SET is_admin=true WHERE id=$1', [actors.admin]);
+      dispatch.mockRestore();
+      enabled.mockRestore();
+      update.mockRestore();
+    }
   });
 
   it('组合筛选、降序和分页与 GET /users 对齐，每行严格限制四个字段', async () => {

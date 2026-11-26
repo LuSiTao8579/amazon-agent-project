@@ -4,13 +4,14 @@ import { Repository } from 'typeorm';
 import type { ToolResult } from '../../../../contracts/tool-result.js';
 import { isIssuedToolContext, type ToolContext } from '../../jwt-auth.guard.js';
 import { summarizeToolResult, type ToolAuditInput } from '../tools/tool-audit-data.js';
-import type { ToolMetadata } from '../tools/tool.decorator.js';
 import { UsersService } from '../../users/users.service.js';
 import { AI_DATA_SOURCE } from '../ai.constants.js';
 import type { AdminQueryAiAuditDto, CreateAiAuditDto, QueryAiAuditDto } from '../dto/ai-audit.dto.js';
 import { AiOperationAuditEntity } from '../entities/ai-operation-audit.entity.js';
 import { aiPage, type AiPage } from './ai-page.js';
 import { requireAiResourceId, requireAiUserId } from './ai-access.js';
+
+export type AuditToolIdentity = Readonly<{ name: string; permission: string }>;
 
 @Injectable()
 export class AiAuditService {
@@ -28,7 +29,7 @@ export class AiAuditService {
     }));
   }
 
-  async recordToolExecution(context: ToolContext | undefined, tool: ToolMetadata | undefined,
+  async recordToolExecution(context: ToolContext | undefined, tool: AuditToolIdentity | undefined,
     inputParams: ToolAuditInput, outcome: ToolResult): Promise<void> {
     const actor = isIssuedToolContext(context) ? context : undefined;
     const record = new AiOperationAuditEntity();
