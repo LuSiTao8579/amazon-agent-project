@@ -18,7 +18,7 @@ const maskedFields = new Set([
 const groups = new Set(['filters', 'metrics']);
 const knownFields = new Set([...Object.keys(enums), ...Object.keys(numberLimits), ...maskedFields, ...groups, 'isAdmin']);
 
-export function redactToolArgs(args: unknown): AuditValue {
+export function redactToolArgs(args: unknown, kind: 'read' | 'write' = 'read'): AuditValue {
   let remaining = 200;
   function visit(value: unknown, field: string, depth: number): AuditValue {
     if (--remaining < 0 || depth > 8) return '[TRUNCATED]';
@@ -38,6 +38,8 @@ export function redactToolArgs(args: unknown): AuditValue {
       let index = 0;
       for (const key in value) {
         if (!Object.hasOwn(value, key)) continue;
+        // 写入提案可能含有效的账号密码；审计副本完全省略凭据字段。
+        if (kind === 'write' && key === 'password') continue;
         if (remaining <= 0) { result.truncated = true; break; }
         const label = knownFields.has(key) ? key : `field_${index}`;
         index++;

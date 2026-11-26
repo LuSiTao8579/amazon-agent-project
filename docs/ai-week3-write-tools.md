@@ -36,3 +36,18 @@ bash bknd/scripts/verify-ai-foundation.sh
 预校验只读数据库。真正删除时在原事务内锁定目标，再复核规则；并发创建或更新仍由唯一约束兜底。预校验成功仅说明检查当时允许继续预览。
 
 配对测试通过测试专用 HTTP 入口调用同一个注册中心，对照实际管理接口的状态码和完整响应体；每组回读测试用户、公司及关系数据。可使用上方的隔离验收命令复跑。[统一预校验服务](../bknd/src/ai/tools/write/write-prevalidation.service.ts) · [HTTP 对照用例](../bknd/test/write-prevalidation.e2e-spec.ts)
+
+## 第八步 · 已注册的用户写工具
+
+四个工具已加入生产 `AiToolsModule`。受信任的后端调用方可通过 `prepareWrite` 进行预校验或预览。聊天模型可选工具列表与只读执行器继续只调度读工具。
+
+| 工具 | 目标与参数 | 业务检查 |
+| --- | --- | --- |
+| userCreateTool | CreateUserDto 请求体 | 校验邮箱、密码、姓名、岗位和状态，再检查邮箱是否占用。预览只展示姓名、岗位和状态这三个字段名。 |
+| userUpdateTool | 独立的目标 UUID、UpdateUserDto 请求体 | 检查目标存在、可修改字段、管理员保护和邮箱占用。预览只列本次提交且允许展示的字段名。 |
+| userDeleteTool | 独立的目标 UUID | 检查目标存在、管理员保护及关联记录。 |
+| userBatchDeleteTool | DeleteUsersDto 的 ids 数组 | 1 至 100 个不重复的 UUID 一次交给业务 Service。任一目标缺失、受保护或仍被引用，整批校验结束。 |
+
+例如管理员预览修改某个用户的岗位，后端调用 `registry.prepareWrite('userUpdateTool', 'preview', request.toolContext, { role: 'Analyst' }, targetUserId)`。校验成功后得到 `{ operation: 'update', target: 'user', changedFields: ['role'] }`，用户表中的岗位保持原值。
+
+密码原值仅用于创建 DTO 校验。生成写工具的审计副本时跳过 password 字段，覆盖预览成功、校验失败及模型误提写工具被拒绝的路径。两个删除工具在本周骨架中仅检查目标，执行仍返回 WRITE_EXECUTION_DISABLED。[用户工具实现](../bknd/src/ai/tools/write/user-write-tools.ts) · [密码审计回读](../bknd/scripts/verify-ai-tool-audits.mjs)

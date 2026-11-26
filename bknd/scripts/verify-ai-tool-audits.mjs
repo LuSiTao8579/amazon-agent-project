@@ -159,6 +159,36 @@ export async function verifyToolAudits(app, http, otherBearer) {
     const window = { from: target.createdAt, to: new Date(Date.parse(target.createdAt) + 1).toISOString() };
     assert.deepEqual(ids(await list(admin.bearer, all, { userId: member.id, ...window })), [target.id]);
     console.log('工具审计通过：6 次新调度，6 条已提交审计；重放和两次入口 401 合计 0 条。数据库和审计 API 合成敏感样本明文检出 0。');
+
+    // 固定模型误提写工具，取得本次真实 HTTP 登录签发的管理员上下文。
+    const createName = 'userCreateTool';
+    const createArgs = { name: 'Audit fixture', role: 'Member', status: 'active',
+      email: randomUUID() + '@example.test', password: markers.password };
+    proposal = { tool: createName, args: createArgs };
+    const adminSession = await http.post('/ai/sessions').set(admin.bearer).send({ title: '创建预览审计' }).expect(201);
+    const refused = await http.post('/ai-agent/sessions/' + adminSession.body.id + '/turns').set(admin.bearer)
+      .send({ requestId: randomUUID(), text: '创建一个新用户' }).expect(201);
+    assert.equal(refused.body.assistantMessage.content.code, 'TOOL_UNAVAILABLE');
+    const [proposedName, context] = registry.mock.calls.at(-1).arguments;
+    assert.equal(proposedName, createName);
+    const tools = app.get(ToolRegistryService);
+    const preview = await tools.prepareWrite(createName, 'preview', context, createArgs);
+    assert.deepEqual(preview, { target: 'user', operation: 'create', changedFields: ['role', 'status', 'name'] });
+    await assert.rejects(tools.prepareWrite(createName, 'preview', context, { ...createArgs, role: 'invalid' }),
+      error => error.getStatus() === 400);
+    const saved = (await db.query('SELECT * FROM ai_operation_audit WHERE user_id=$1 AND tool_name=$2',
+      [admin.id, createName])).rows;
+    assert.deepEqual(saved.map(row => [row.action, row.result_summary.code]).sort(), [
+      ['tool.execute', 'TOOL_UNAVAILABLE'], ['user.create.preview', 'INVALID_ARGUMENTS'], ['user.create.preview', 'OK'],
+    ]);
+    const visible = (await list(admin.bearer, mine)).filter(row => row.toolName === createName);
+    assert.deepEqual(ids(saved), ids(visible));
+    for (const output of [preview, saved, visible]) {
+      checkRedaction(output);
+      assert.ok(!JSON.stringify(output).includes('"password"'), '预览与创建审计须排除密码字段');
+    }
+    assert.equal((await db.query('SELECT 1 FROM users WHERE email=$1', [createArgs.email])).rowCount, 0);
+    console.log('创建工具审计通过：聊天拦截、合法预览、非法参数各产生 1 条记录；预览、数据库和审计 API 均无密码字段或样本值。');
   } finally {
     model.mock.restore();
     registry.mock.restore();

@@ -68,7 +68,7 @@ export class ToolRegistryService implements OnModuleInit {
     const validPhase = phase === 'validate' || phase === 'preview';
     const action = entry && { name: entry.meta.name, permission: entry.meta.target + '.' + entry.meta.operation +
       '.' + (validPhase ? phase : 'unavailable') };
-    const input = redactToolArgs(args);
+    const input = redactToolArgs(args, 'write');
     let prepared;
     try {
       requireToolContext(context);
@@ -105,7 +105,7 @@ export class ToolRegistryService implements OnModuleInit {
   @AuditToolExecution((registry: ToolRegistryService, name) => {
     const write = registry.describeWrite(name);
     const tool = write ? { name: write.name, permission: 'tool.execute' } : registry.entries.get(name)?.meta;
-    return { audit: registry.audit, tool };
+    return { audit: registry.audit, tool, kind: write ? 'write' : 'read' };
   })
   async execute(name: string, context: ToolContext | undefined, args: unknown): Promise<ToolResult> {
     requireToolContext(context);

@@ -4,12 +4,12 @@ import type { ExecuteTool } from './tool-executor.js';
 import { redactToolArgs } from './tool-audit-data.js';
 import { toolErrorResult, toolFailure } from './tool-result.js';
 
-export function AuditToolExecution<T>(resolve: (owner: T, name: string) => { audit: AiAuditService; tool?: AuditToolIdentity }) {
+export function AuditToolExecution<T>(resolve: (owner: T, name: string) => { audit: AiAuditService; tool?: AuditToolIdentity; kind: 'read' | 'write' }) {
   return (_target: T, _key: string, descriptor: TypedPropertyDescriptor<ExecuteTool>) => {
     const execute = descriptor.value!;
     descriptor.value = async function (this: T, name, context, args) {
-      const { audit, tool } = resolve(this, name);
-      const input = redactToolArgs(args);
+      const { audit, tool, kind } = resolve(this, name);
+      const input = redactToolArgs(args, kind);
       let outcome;
       try {
         outcome = await execute.call(this, name, context, args);
