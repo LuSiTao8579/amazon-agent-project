@@ -10,6 +10,7 @@ import { AiCacheModule } from '../cache/ai-cache.module.js';
 import { QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool } from './business-tools.js';
 import { ExampleCountUsersTool } from './example-count-users.tool.js';
 import { ToolPolicyService } from './tool-policy.service.js';
+import { CompanyCreateTool, CompanyDeleteTool, CompanyUpdateTool } from './write/company-write-tools.js';
 import { UserBatchDeleteTool, UserCreateTool, UserDeleteTool, UserUpdateTool } from './write/user-write-tools.js';
 import { WritePrevalidationService } from './write/write-prevalidation.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
@@ -20,6 +21,7 @@ import { ToolRegistryService } from './tool-registry.service.js';
     { provide: TOOL_EXECUTOR, useExisting: ToolRegistryService }, ToolPolicyService, WritePrevalidationService, ToolRegistryService,
     QueryUsersTool, QueryCompaniesTool, DashboardMetricsTool, ExampleCountUsersTool,
     UserCreateTool, UserUpdateTool, UserDeleteTool, UserBatchDeleteTool,
+    CompanyCreateTool, CompanyUpdateTool, CompanyDeleteTool,
   ],
   exports: [AiCacheModule, TOOL_EXECUTOR, ToolRegistryService, ToolPolicyService, ExampleCountUsersTool],
 })

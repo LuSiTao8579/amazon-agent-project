@@ -51,3 +51,17 @@ bash bknd/scripts/verify-ai-foundation.sh
 例如管理员预览修改某个用户的岗位，后端调用 `registry.prepareWrite('userUpdateTool', 'preview', request.toolContext, { role: 'Analyst' }, targetUserId)`。校验成功后得到 `{ operation: 'update', target: 'user', changedFields: ['role'] }`，用户表中的岗位保持原值。
 
 密码原值仅用于创建 DTO 校验。生成写工具的审计副本时跳过 password 字段，覆盖预览成功、校验失败及模型误提写工具被拒绝的路径。两个删除工具在本周骨架中仅检查目标，执行仍返回 WRITE_EXECUTION_DISABLED。[用户工具实现](../bknd/src/ai/tools/write/user-write-tools.ts) · [密码审计回读](../bknd/scripts/verify-ai-tool-audits.mjs)
+
+## 第九步 · 已注册的公司写工具
+
+三个工具使用现有 `CompaniesService` 的只读校验方法，统一注册为 `kind: 'write'`、`autoExecute: false`。管理员可通过后端注册中心请求校验或预览，普通账号在查询目标公司前收到 403。
+
+| 工具 | 对应的业务入口 | 校验规则 |
+| --- | --- | --- |
+| companyCreateTool | POST /companies | CreateCompanyDto 校验编码、名称、等级、国家、城市、成立年份、年营收和员工数，validateCreate 检查编码冲突。名称相同且编码不同的公司可以通过。 |
+| companyUpdateTool | PATCH /companies/:code | 目标编码单独传入。UpdateCompanyDto 排除 companyCode，validateUpdate 检查有可更新字段并确认目标存在。 |
+| companyDeleteTool | DELETE /companies/:code | validateRemove 确认目标存在，并检查 relationships 的 company_code 与 parent_company 两列。任意一列引用目标，均返回 409。 |
+
+例如关系表中一行记录的 company_code 为 B，parent_company 为 A。预检删除 B 时命中当前公司编码，预检删除 A 时命中上级公司编码。两次检查都会保留 A、B 及这行关系。无关联公司的删除预览只返回目标类型、操作及空字段清单。
+
+更新预览只列出本次提交且允许展示的字段名。只修改年营收时，可得到成功的预览和空的 changedFields，审计记录会遮盖金额。可在仓库根目录运行 `bash bknd/scripts/verify-ai-foundation.sh` 复跑。[公司工具实现](../bknd/src/ai/tools/write/company-write-tools.ts) · [业务规则](../bknd/src/companies/companies.service.ts) · [HTTP 对照用例](../bknd/test/write-prevalidation.e2e-spec.ts)

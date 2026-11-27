@@ -189,6 +189,24 @@ export async function verifyToolAudits(app, http, otherBearer) {
     }
     assert.equal((await db.query('SELECT 1 FROM users WHERE email=$1', [createArgs.email])).rowCount, 0);
     console.log('创建工具审计通过：聊天拦截、合法预览、非法参数各产生 1 条记录；预览、数据库和审计 API 均无密码字段或样本值。');
+
+    // 仅修改财务字段也可以预览；核对生产注册的工具、已提交的审计和原公司记录。
+    const updateName = 'companyUpdateTool';
+    const targetCode = 'AUDIT_A';
+    const companyRow = async () => (await db.query('SELECT * FROM companies WHERE company_code=$1', [targetCode])).rows;
+    const before = await companyRow();
+    assert.equal(before.length, 1);
+    const financialPreview = await tools.prepareWrite(updateName, 'preview', context, { annualRevenue: 123456.78 }, targetCode);
+    assert.deepEqual(financialPreview, { target: 'company', operation: 'update', changedFields: [] });
+    assert.deepEqual(await companyRow(), before);
+    const audit = (await db.query('SELECT id, action, input_params FROM ai_operation_audit WHERE user_id=$1 AND tool_name=$2',
+      [admin.id, updateName])).rows;
+    assert.equal(audit.length, 1);
+    assert.equal(audit[0].action, 'company.update.preview');
+    assert.deepEqual(audit[0].input_params, { annualRevenue: masked });
+    const readback = await http.get(mine + '/' + audit[0].id).set(admin.bearer).expect(200);
+    assert.deepEqual(readback.body.inputParams, { annualRevenue: masked });
+    console.log('公司营收预览通过：公司行及更新时间一致，审计表与 API 中的营收值均已遮盖。');
   } finally {
     model.mock.restore();
     registry.mock.restore();
