@@ -11,6 +11,7 @@ import { AuthModule } from '../src/auth/auth.module.js';
 import { JwtAuthGuard, type ToolRequest } from '../src/jwt-auth.guard.js';
 import { PG_POOL } from '../src/database/database.module.js';
 import { UsersModule } from '../src/users/users.module.js';
+import { UserManagementService } from '../src/users/user-management.service.js';
 import { CompaniesModule } from '../src/companies/companies.module.js';
 import { CompaniesService } from '../src/companies/companies.service.js';
 import { AiToolsModule } from '../src/ai/tools/ai-tools.module.js';
@@ -19,13 +20,6 @@ import { AiAuditService } from '../src/ai/services/ai-audit.service.js';
 import type { BaseWriteTool, WritePhase } from '../src/ai/tools/write/base-write-tool.js';
 import { UserCreateTool, UserUpdateTool, UserDeleteTool, UserBatchDeleteTool } from '../src/ai/tools/write/user-write-tools.js';
 import { CompanyCreateTool, CompanyUpdateTool, CompanyDeleteTool } from '../src/ai/tools/write/company-write-tools.js';
-
-const writeTools = [
-  ['userCreateTool', 'user', 'create', UserCreateTool], ['userUpdateTool', 'user', 'update', UserUpdateTool],
-  ['userDeleteTool', 'user', 'delete', UserDeleteTool], ['userBatchDeleteTool', 'user', 'batchDelete', UserBatchDeleteTool],
-  ['companyCreateTool', 'company', 'create', CompanyCreateTool], ['companyUpdateTool', 'company', 'update', CompanyUpdateTool],
-  ['companyDeleteTool', 'company', 'delete', CompanyDeleteTool],
-] as const;
 
 @Controller('test-prevalidation')
 @UseGuards(JwtAuthGuard)
@@ -44,9 +38,14 @@ function watchTool(tool: BaseWriteTool<object>) {
   return { preview: vi.spyOn(hooks, 'getPreview'), execute: vi.spyOn(tool, 'execute') };
 }
 
+function watchBusinessWrites(service: UserManagementService | CompaniesService) {
+  return [vi.spyOn(service, 'create'), vi.spyOn(service, 'update'), vi.spyOn(service, 'remove')];
+}
+
 describe('写入预校验与业务 HTTP 错误逐项对照', () => {
   let app: INestApplication;
   let calls: ReturnType<typeof watchTool>[];
+  let businessWrites: ReturnType<typeof watchBusinessWrites>;
   let db: pg.Pool;
   let adminToken: string;
   let memberToken: string;
@@ -54,6 +53,23 @@ describe('写入预校验与业务 HTTP 错误逐项对照', () => {
   const code = 'pre-' + admin, parent = code + '-parent', free = code + '-free';
   const user = { email: admin + '@example.test', password: 'Synthetic fixture password', name: 'Example', role: 'Member', status: 'active' };
   const company = { companyCode: code, companyName: 'Example', country: 'UK', city: 'London', level: 2, employees: 1, foundedYear: 2020, annualRevenue: 1 };
+
+  const writeTools = [
+    { name: 'userCreateTool', target: 'user', operation: 'create', type: UserCreateTool, targetId: '',
+      body: { ...user, email: missing + '@example.test' }, fields: ['role', 'status', 'name'] },
+    { name: 'userUpdateTool', target: 'user', operation: 'update', type: UserUpdateTool, targetId: member,
+      body: { email: member + '@example.test', status: 'inactive' }, fields: ['status'] },
+    { name: 'userDeleteTool', target: 'user', operation: 'delete', type: UserDeleteTool, targetId: member, body: {}, fields: [] },
+    { name: 'userBatchDeleteTool', target: 'user', operation: 'batchDelete', type: UserBatchDeleteTool, targetId: '',
+      body: { ids: [member] }, fields: [] },
+    // 与现有公司同名、不同编码，同时取各数值上限。
+    { name: 'companyCreateTool', target: 'company', operation: 'create', type: CompanyCreateTool, targetId: '',
+      body: { ...company, companyCode: code + '-new', level: 100, foundedYear: 9999, employees: 2147483647, annualRevenue: 999999999999999 },
+      fields: ['level', 'city', 'country', 'companyName', 'employees', 'foundedYear'] },
+    { name: 'companyUpdateTool', target: 'company', operation: 'update', type: CompanyUpdateTool, targetId: free,
+      body: { level: 1, foundedYear: 1, employees: 0, annualRevenue: 0 }, fields: ['level', 'employees', 'foundedYear'] },
+    { name: 'companyDeleteTool', target: 'company', operation: 'delete', type: CompanyDeleteTool, targetId: free, body: {}, fields: [] },
+  ];
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
@@ -63,7 +79,7 @@ describe('写入预校验与业务 HTTP 错误逐项对照', () => {
     app = mod.createNestApplication();
     setupApp(app);
     await app.init();
-    calls = writeTools.map(([, , , type]) => watchTool(app.get(type)));
+    calls = writeTools.map(({ type }) => watchTool(app.get(type)));
     db = app.get(PG_POOL);
     for (const id of [admin, member, referenced]) {
       await db.query('INSERT INTO users(id,email,password_hash,is_admin) VALUES ($1,$2,$3,$4)', [id, id + '@example.test', '$argon2id$fixture', id === admin]);
@@ -74,6 +90,7 @@ describe('写入预校验与业务 HTTP 错误逐项对照', () => {
     // parent 只在 parent_company 一列出现，free 两列都不出现。
     await db.query('INSERT INTO relationships(company_code,parent_company) VALUES ($1,$2)', [code, parent]);
     for (const method of ['get', 'validateCreate', 'validateUpdate', 'validateRemove'] as const) vi.spyOn(companies, method);
+    businessWrites = [...watchBusinessWrites(app.get(UserManagementService)), ...watchBusinessWrites(companies)];
     const jwt = app.get(JwtService);
     adminToken = await jwt.signAsync({ sub: admin });
     memberToken = await jwt.signAsync({ sub: member });
@@ -144,8 +161,11 @@ describe('写入预校验与业务 HTTP 错误逐项对照', () => {
     const auth = actor === 'none' ? {} : { Authorization: 'Bearer ' + ({ admin: adminToken, member: memberToken, invalid: 'invalid' }[actor]) };
     const before = await snapshot();
     const expected = await http[method](path).set(auth).send(args).expect(status);
+    // 业务 HTTP 对照请求可能已进入写方法；单独核对随后 AI 准备阶段的调用增量。
+    const beforePrepare = businessWrites.map(method => method.mock.calls.length);
     const actual = await http.post('/test-prevalidation/' + name).set(auth).send(args).expect(status);
     expect(actual.body).toEqual(expected.body);
+    expect(businessWrites.map(method => method.mock.calls.length)).toEqual(beforePrepare);
     if (actor === 'member' && name.startsWith('company')) {
       const companies = app.get(CompaniesService);
       for (const method of ['get', 'validateCreate', 'validateUpdate', 'validateRemove'] as const) {
@@ -159,30 +179,38 @@ describe('写入预校验与业务 HTTP 错误逐项对照', () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  it('七种合法操作均通过预校验和预览，业务表与更新时间逐行一致', async () => {
+  it.each(writeTools)('$name 的双账号准备与执行拦截', async ({ name, target, operation, type, targetId, body, fields }) => {
+    const registry = app.get(ToolRegistryService);
+    const tool = app.get(type);
+    const prepare = vi.spyOn(registry, 'prepareWrite');
     const before = await snapshot();
-    for (const [path, args, changedFields] of [
-      ['userCreateTool', { ...user, email: missing + '@example.test' }, ['role', 'status', 'name']],
-      ['userUpdateTool/' + member, { email: member + '@example.test', status: 'inactive' }, ['status']],
-      ['userDeleteTool/' + member, {}, []], ['userBatchDeleteTool', { ids: [member] }, []],
-      // 与现有公司同名，不同编码；取各数值允许的上限。
-      ['companyCreateTool', { ...company, companyCode: code + '-new', level: 100, foundedYear: 9999,
-        employees: 2147483647, annualRevenue: 999999999999999 }, ['level', 'city', 'country', 'companyName', 'employees', 'foundedYear']],
-      ['companyUpdateTool/' + free, { level: 1, foundedYear: 1, employees: 0, annualRevenue: 0 }, ['level', 'employees', 'foundedYear']],
-      ['companyDeleteTool/' + free, {}, []],
-    ] as const) {
-      const prepare = () => request(app.getHttpServer()).post('/test-prevalidation/' + path).auth(adminToken, { type: 'bearer' });
-      const validated = await prepare().query({ phase: 'validate' }).send(args).expect(201);
-      expect(validated.body).toEqual({ validated: true });
-      const result = await prepare().send(args).expect(201);
-      expect(result.body.changedFields).toEqual(changedFields);
-      expect(JSON.stringify(result.body)).not.toContain(user.password);
-      expect(await snapshot()).toEqual(before);
-    }
-    for (const tool of calls) {
-      expect(tool.preview).toHaveBeenCalledTimes(1);
-      expect(tool.execute).not.toHaveBeenCalled();
-    }
+    try {
+      expect(registry.describeWrite(name)).toEqual({ name, target, operation, kind: 'write', autoExecute: false });
+      for (const [actor, token] of [[member, memberToken], [admin, adminToken]]) {
+        const path = ['/test-prevalidation', name, targetId].filter(Boolean).join('/');
+        const post = (phase: WritePhase) => request(app.getHttpServer()).post(path)
+          .auth(token, { type: 'bearer' }).query({ phase }).send(body);
+        if (actor === admin) {
+          expect((await post('validate').expect(201)).body).toEqual({ validated: true });
+          expect((await post('preview').expect(201)).body).toEqual({ operation, target, changedFields: fields });
+        } else {
+          await post('validate').expect(403);
+          await post('preview').expect(403);
+          for (const call of calls) expect(call.preview).not.toHaveBeenCalled();
+        }
+        const context = prepare.mock.lastCall![2]!;
+        expect(context.userId).toBe(actor);
+        const available = (await registry.listAvailable(context)).map(meta => meta.name);
+        expect(available).not.toContain(name);
+        expect((await registry.execute(name, context, body)).code).toBe('TOOL_UNAVAILABLE');
+        expect(await tool.execute(context, body)).toEqual({ code: 'WRITE_EXECUTION_DISABLED' });
+        expect(await tool.rollback(context, randomUUID())).toEqual({ code: 'ROLLBACK_UNSUPPORTED' });
+        expect(await snapshot()).toEqual(before);
+        for (const method of businessWrites) expect(method).not.toHaveBeenCalled();
+      }
+      expect(tool.execute).toHaveBeenCalledTimes(2); // 两个账号各直接验证关闭的骨架一次
+      expect(calls.reduce((count, call) => count + call.preview.mock.calls.length, 0)).toBe(1);
+    } finally { prepare.mockRestore(); }
   });
 
   it('仅修改营收时预览通过，仅返回操作、目标类型和空的可展示字段列表', async () => {
@@ -191,28 +219,6 @@ describe('写入预校验与业务 HTTP 错误逐项对照', () => {
       .auth(adminToken, { type: 'bearer' }).send({ annualRevenue: 321654.78 }).expect(201);
     expect(res.body).toEqual({ operation: 'update', target: 'company', changedFields: [] });
     expect(await snapshot()).toEqual(before);
-  });
-
-  it('七个生产工具仅在写注册表可见，真实执行入口与回滚入口关闭', async () => {
-    const registry = app.get(ToolRegistryService);
-    // 经 JWT 守卫取得本次真实签发的上下文，不从请求体模拟管理员身份。
-    const prepare = vi.spyOn(registry, 'prepareWrite');
-    try {
-      await request(app.getHttpServer()).post('/test-prevalidation/userDeleteTool/' + member)
-        .auth(adminToken, { type: 'bearer' }).query({ phase: 'validate' }).expect(201);
-      const context = prepare.mock.calls[0][2]!;
-      const available = (await registry.listAvailable(context)).map(meta => meta.name);
-      const before = await snapshot();
-      for (const [name, target, operation, type] of writeTools) {
-        expect(registry.describeWrite(name)).toEqual({ name, target, operation, kind: 'write', autoExecute: false });
-        expect(available).not.toContain(name);
-        expect((await registry.execute(name, context, {})).code).toBe('TOOL_UNAVAILABLE');
-        const tool = app.get(type);
-        expect(await tool.execute(context, {})).toEqual({ code: 'WRITE_EXECUTION_DISABLED' });
-        expect(await tool.rollback(context, randomUUID())).toEqual({ code: 'ROLLBACK_UNSUPPORTED' });
-      }
-      expect(await snapshot()).toEqual(before);
-    } finally { prepare.mockRestore(); }
   });
 
   it('一次预检允许 100 个不同普通用户，整批记录保持原值', async () => {

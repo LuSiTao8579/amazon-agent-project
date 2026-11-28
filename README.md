@@ -73,6 +73,25 @@ npm run test:integration
 
 ## 文档索引
 
+### AI 第三周联合交付
+
+1. [只读工具联调与性能报告](docs/ai-week3-cache-performance.md) · 从聊天指令追到页面结果和审计，查看三个工具的冷、热查询实测。
+2. [存储与审计核查记录](docs/ai-week3-storage-review.md) · 按方法核对 SQL 访问边界，再用真实请求对账四张 AI 表、审计增量和脱敏结果。
+3. [写工具开发规范与七项验收矩阵](docs/ai-week3-write-tools.md) · 对照用户和公司业务接口，复跑普通用户、管理员的预校验与执行拦截。
+
+安装前后端依赖和 Playwright Chromium，启动 Docker，并配置目标模型后，可在仓库根目录依次复跑本轮验收。浏览器脚本会自行构建并启动前后端，`target` 使用后端的模型配置，`benchmark` 使用固定模型。
+
+```sh
+bash bknd/scripts/verify-ai-foundation.sh
+bash bknd/scripts/verify-ai-tools-browser.sh fixture
+npm --prefix ftnd run typecheck
+npm --prefix ftnd test
+bash bknd/scripts/verify-ai-tools-browser.sh target
+bash bknd/scripts/verify-ai-tools-browser.sh benchmark
+```
+
+### 分步文档与环境说明
+
 - [AI Agent 第二周第一步 · 业务工具接入核对](docs/ai-tools-step-1.md) · 三个只读工具的 Service、权限、字段、接入缺口和待确认口径。
 - [AI Agent 第二周第二步 · 工具开发规范](docs/ai-tools-step-2.md) · 从认证请求取得上下文，声明工具权限和输入 DTO，通过业务 Service 执行。
 - [AI Agent 第二周第三步 · 工具返回与排序契约](docs/ai-tools-step-3.md) · 返回结构、页码与排序规则、错误码和联调样例。

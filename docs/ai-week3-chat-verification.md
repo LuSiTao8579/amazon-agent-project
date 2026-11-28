@@ -9,6 +9,19 @@
 | 普通用户「查看 2018 到 2020 年成立的英国公司的总营收和等级分布。」 | `dashboard_metrics` | `{"country":"UK","foundedYearFrom":2018,"foundedYearTo":2020,"charts":["levelDistribution"]}` | `{"foundedYearFrom":2018,"foundedYearTo":2020,"country":"UK","charts":["levelDistribution"],"view":"report"}` | 共 5 家，总收入原值 1,782。等级 2、3、4 各有 2、2、1 家，环形图旁的表格分别显示 40%、40%、20%。 |
 | 普通用户「查询用户列表。」 | `query_users` | `{}` | `{"page":1,"pageSize":10}` | 显示“你没有权限执行此查询。”。业务用户列表调用增量为 0，刷新后仍显示权限提示，持久化历史中的错误码为 `FORBIDDEN`，没有用户明细。 |
 
+## 2026-11-28 第十步复验
+
+前端独立类型检查通过，36 个单元测试通过。固定模型和目标模型两轮均使用 Next.js 生产构建。每条指令发送前后，脚本读取当前登录用户的审计列表并比较记录 ID，断言恰好新增一条，再核对执行人、工具、操作、成功或失败状态及结果摘要。表格摘要的返回数和总数与前端收到的数据逐项比较。目标模型只接收隔离库中的合成样本。[逐回合浏览器断言](../bknd/scripts/verify-chat-commands.mjs)
+
+| 目标模型 Qwen qwen3.7-flash 的实测指令 | 注册中心实际参数 | 业务接口与页面核对结果 | 本次审计 ID、操作及摘要 |
+| --- | --- | --- | --- |
+| 管理员查询启用的 Analyst，姓名升序，第 1 页 | `query_users` · `{"page":1,"pageSize":10,"sortOrder":"asc","sortBy":"name","status":"active","roles":["Analyst"]}` | GET /users 与用户表格一致，Ada、Lin F 共 2 人 | `dc288f54-0cca-4db2-92cd-aa1412c72627` · users.read · OK/table，返回 2，总数 2 |
+| 普通用户查询英国伦敦等级 2 或 3 的公司 | `query_companies` · `{"country":"UK","city":"London","levels":[2,3],"sortBy":"companyName","pageSize":10}` | GET /companies 与公司表格一致，Alpha、Beta、Cedar 共 3 家。展开 Cedar 显示年营收 42、员工 0 | `cdff93e6-3da4-4cda-956c-6a272ba40b17` · companies.read · OK/table，返回 3，总数 3 |
+| 普通用户查询 2018 至 2020 年成立的英国公司的总营收和等级分布 | `dashboard_metrics` · `{"foundedYearFrom":2018,"foundedYearTo":2020,"country":"UK","charts":["levelDistribution"],"view":"report"}` | GET /dashboard 与报表一致，总营收 1,782，等级 2、3、4 的占比分别为 40%、40%、20% | `0409f133-05ee-4676-b1b0-6e5c41b6321e` · dashboard.read · OK/report |
+| 普通用户查询用户列表 | `query_users` · `{"page":1,"pageSize":10}` | 显示权限提示，用户列表业务方法调用增量为 0，刷新及回读历史均未出现用户明细 | `1047310f-55bb-4d32-bc89-88a634bd1b98` · users.read · FORBIDDEN/text |
+
+本次固定模型的四条指令及实际参数与上方 11 月 25 日表格的固定模型列一致，四条均通过业务、页面和逐条审计断言。额外的 Atlantis 空结果查询也新增 1 条成功审计，两项计数均为 0。扩展回归通过了下方列出的工具禁用、业务异常、刷新和会话切换，以及幂等重试、模型异常和跨账号会话隔离。审计 ID 来自运行期间的临时数据库，脚本退出后清理容器，复跑会生成新 ID。
+
 ## 边界场景与历史恢复
 
 以下项目在固定模型模式通过。应用的注册中心、权限检查、业务查询、审计和历史读取均走实际链路。

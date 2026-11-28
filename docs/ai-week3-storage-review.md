@@ -1,6 +1,15 @@
-# 第三周第四步 · SQL 访问边界与四表数据质量
+# 第三周联合交付 · 存储与审计核查记录
 
-2026-11-26，走查后端 `src/ai`、`src/ai-agent` 的运行时代码及其鉴权、业务 Service 调用链。三个只读工具均通过原业务 Service 查询，未发现 AI 代码用原生 SQL、QueryBuilder 或 Repository 直接读写 `users`、`companies`、`relationships`。在含旧版记录的隔离升级库，通过真实 HTTP 入口生成新样本，四表的归属、状态、数量和关联核对通过。
+2026-11-28 在独立 PostgreSQL 和 Redis 上复跑。以下各行来自独立场景，四表样本中的两条审计和九个聊天请求各自对账。复跑命令见文末。
+
+| 核查项 | 预期 | 本轮实测 |
+|---|---|---|
+| 业务 SQL 边界 | 三个只读工具和七个写工具的预校验均通过业务 Service 访问业务数据 | 按下文的方法核对 AI 运行时代码中的 SQL、连接池、Repository、QueryBuilder 和调用目标，未发现 AI 直接读写 users、companies、relationships。 |
+| 升级与四表质量 | 已有会话可读，迁移可重跑，通过 HTTP 创建的记录归属正确 | 旧表定义与数据快照一致。回读到 1 个会话扩展、1 条记忆、1 个任务、2 条工具审计。四表所检查的异常行数均为 0。 |
+| 工具调用与审计 | 每次新调度对应一条审计，请求重放和入口鉴权失败各新增 0 条 | 9 个聊天请求中，6 次进入注册中心。数据库、审计 API 各新增同样的 6 条记录，其中成功 2 条、失败 4 条。其余 3 个请求的审计增量均为 0。 |
+| 敏感字段与可见范围 | 数据库与审计 API 均无合成敏感明文，普通账号只能读取本人记录 | 密码、令牌、嵌套参数、自由文本及结果行标记检出 0。创建用户的聊天拦截、合法预览、非法输入各有 1 条审计；预览和审计都省略密码。公司预览审计中的营收值已遮盖。跨账号详情返回 404，普通账号访问管理员查询返回 403。 |
+
+每次调用的状态码、执行人、审计增量、摘要字段和双账号可见范围详见[逐次审计对账](ai-week3-audit-verification.md)。本轮样本覆盖合成数据和隔离库，生产历史数据质量需在对应环境核对。数据库对全空白文本的约束仍有边界，见“四表样本与约束证据”。
 
 ## 业务 SQL 在哪里执行
 
@@ -12,6 +21,8 @@
 | `QueryCompaniesTool.load` | [CompaniesService.list](../bknd/src/companies/companies.service.ts) | 在 companies 上查询列表和详情，计算人均年营收。 |
 | `DashboardMetricsTool.load` | [DashboardService.getDashboard](../bknd/src/dashboard/dashboard.service.ts) | 从 companies 的同一筛选集计算指标、等级分布与累计曲线。 |
 | `JwtAuthGuard.canActivate`、`ToolPolicyService.isCurrentAdmin`、`AiAuditService.requireAdmin` | [UsersService.findById](../bknd/src/users/users.service.ts) | 按登录上下文复核账号和管理员身份。关系查询、修改及删除不在三类工具的调用路径上。 |
+
+写工具只把已校验的参数、目标传入原业务 Service。四个用户工具共用 `UserManagementService.validateCreate / validateUpdate / validateRemove`，三个公司工具共用 `CompaniesService.validateCreate / validateUpdate / validateRemove`。这些方法负责读取邮箱占用、公司编码、管理员保护和供应链关联等业务状态。预校验通过和失败时，对业务写方法的调用次数及三张业务表的字段快照均由联合回归检查。[用户工具](../bknd/src/ai/tools/write/user-write-tools.ts) · [公司工具](../bknd/src/ai/tools/write/company-write-tools.ts) · [写工具验收矩阵](ai-week3-write-tools.md)
 
 ## AI 自有数据如何访问
 
@@ -45,6 +56,12 @@
 文本检查有一处层次差异：HTTP DTO 会拒绝全空白字符串，现有数据库长度约束使用 btrim，默认只裁剪普通空格。直接 SQL 写入只含制表符的文本时，单靠该长度约束不能保证拒绝；本次测试库核查同时检查了空白字符。上述行数仅描述本次隔离测试库。
 
 ## 复跑
+
+在仓库根目录定位 AI 运行时代码的数据库调用点，再逐个核对上表中的方法及其实际访问的表。本轮命令列出三个聊天数据访问文件与四个 AI Service 文件。
+
+```sh
+rg -l -g '!*.spec.ts' 'InjectRepository|createQueryBuilder|PG_POOL|CHAT_LOCK_POOL|DataSource|\.query\(' bknd/src/ai bknd/src/ai-agent
+```
 
 在仓库根目录运行以下命令。脚本会启动临时 PostgreSQL 和 Redis，分别验证历史升级库和全新迁移库，结束后清理容器。四表样本在升级库中写入，负例和全量 E2E 在新库中执行。
 

@@ -19,6 +19,7 @@ import { AiOperationAuditEntity } from '../src/ai/entities/ai-operation-audit.en
 import { AiCacheService } from '../src/ai/cache/ai-cache.service.js';
 import { CompaniesModule } from '../src/companies/companies.module.js';
 import { CompaniesService } from '../src/companies/companies.service.js';
+import { DashboardService } from '../src/dashboard/dashboard.service.js';
 import { AiSessionContextCache } from '../src/ai/cache/ai-session-context.cache.js';
 import { ToolRegistryService } from '../src/ai/tools/tool-registry.service.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -300,6 +301,29 @@ describe('三类只读工具与业务 HTTP 接口对照', () => {
     });
     const emptyReport = await checkedTurn('member', '查看 Dashboard', 'dashboard_metrics', empty);
     expect(emptyReport.content.data).toEqual(noMatches.body);
+  });
+
+  it('Dashboard 图表顺序等价时复用缓存，仅指标的报表单独缓存，每个新回合各记一次审计', async () => {
+    const filters = { country, levels: [2, 3], foundedYearFrom: 2018, foundedYearTo: 2020 };
+    const ask = (charts: string[]) => checkedTurn('member', '查看 Dashboard', 'dashboard_metrics', { ...filters, charts });
+    const query = vi.spyOn(app.get(DashboardService), 'getDashboard');
+    try {
+      const full = await ask(['yearlyGrowth', 'levelDistribution']);
+      expect(full.content.data).toMatchObject({
+        summary: { companyCount: 2, totalRevenue: 242 },
+        levelDistribution: expect.any(Array), yearlyGrowth: expect.any(Array),
+      });
+      const reordered = await ask(['levelDistribution', 'yearlyGrowth']);
+      expect(reordered.content).toEqual(full.content);
+      expect(query).toHaveBeenCalledTimes(1);
+
+      const overview = await ask([]);
+      expect(overview.content.data).toEqual({ summary: full.content.data.summary });
+      expect(query).toHaveBeenCalledTimes(2);
+      const repeated = await ask([]);
+      expect(repeated.content).toEqual(overview.content);
+      expect(query).toHaveBeenCalledTimes(2);
+    } finally { query.mockRestore(); }
   });
 
   it('公司非法分页和 Dashboard 颠倒年份分别返回参数错误', async () => {

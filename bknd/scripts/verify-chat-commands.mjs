@@ -20,13 +20,32 @@ export async function verifyChatCommands({ admin, member, send, registry, userLi
     const start = registry.mock.callCount();
     let calls;
     try {
+      const before = await actor.get('/ai/audits?pageSize=100');
+      assert.equal(before.hasMore, false);
+      const priorIds = new Set(before.items.map(row => row.id));
       const turn = await send(actor.page, question);
       // 观察生产调度器收到的参数，不读取身份上下文，不替换工具实现。
       calls = registry.mock.calls.slice(start).map(({ arguments: [tool, , args] }) => ({ tool, args }));
       assert.equal(calls.length, 1);
       assert.equal(calls[0].tool, commandProposals.get(question)[0]);
       const description = await verify(turn, calls[0].args);
-      console.log(JSON.stringify({ mode, question, ...calls[0], page: description, status: 'PASS' }));
+      const after = await actor.get('/ai/audits?pageSize=100');
+      assert.equal(after.hasMore, false);
+      const added = after.items.filter(row => !priorIds.has(row.id));
+      assert.equal(added.length, 1, '每条浏览器指令应新增一条本人审计');
+      const [audit] = added;
+      const tool = calls[0].tool;
+      const action = { query_users: 'users.read', query_companies: 'companies.read', dashboard_metrics: 'dashboard.read' }[tool];
+      assert.equal(audit.toolName, tool);
+      assert.equal(audit.action, action);
+      assert.equal(audit.userId, actor.id);
+      const summary = question === denied ? { code: 'FORBIDDEN', resultType: 'text' }
+        : tool === 'dashboard_metrics' ? { code: 'OK', resultType: 'report' }
+        : { code: 'OK', resultType: 'table', returnedCount: (turn.last.content.users ?? turn.last.content.companies).length,
+            total: turn.last.content.total };
+      assert.equal(audit.result, question === denied ? 'failure' : 'success');
+      assert.deepEqual(audit.resultSummary, summary);
+      console.log(JSON.stringify({ mode, question, ...calls[0], page: description, auditId: audit.id, action, summary, status: 'PASS' }));
     } catch (error) {
       calls ??= registry.mock.calls.slice(start).map(({ arguments: [tool, , args] }) => ({ tool, args }));
       console.error(JSON.stringify({ mode, question, calls, status: 'FAIL', reason: error.message }));
